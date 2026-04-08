@@ -161,27 +161,111 @@ static Nibbles to_nibbles(const Bytes &key)
     }
     return nibbles;
 }
+// Trie node definitions
+enum NodeType { NODE_NULL, NODE_LEAF, NODE_EXTENSION, NODE_BRANCH };
+
+struct TrieNode;
+typedef std::shared_ptr<TrieNode> NodePtr;
+// A node in the Merkle Patricia Trie
+struct TrieNode {
+    NodeType type;
+    Nibbles partial;
+    Bytes value;
+    NodePtr children[16];
+    Bytes branch_value;
+    NodePtr next;
+    mutable Hash cached_hash;  // empty vector = not computed
+
+    TrieNode() : type(NODE_NULL), next() {
+        for (int i = 0; i < 16; i++) children[i] = NodePtr();
+    }
+
+    void invalidate() { cached_hash.clear(); }
+
+    static NodePtr make_null() {
+        return std::make_shared<TrieNode>();
+    }
+    static NodePtr make_leaf(Nibbles p, Bytes v) {
+        NodePtr n = std::make_shared<TrieNode>();
+        n->type = NODE_LEAF;
+        n->partial = p;
+        n->value = v;
+        return n;
+    }
+    // For extension nodes, 'partial' holds the shared key segment, and 'next' points to the child node.
+    static NodePtr make_extension(Nibbles p, NodePtr child) {
+        NodePtr n = std::make_shared<TrieNode>();
+        n->type = NODE_EXTENSION;
+        n->partial = p;
+        n->next = child;
+        return n;
+    }
+    // For branch nodes, 'partial' and 'value' are not used. 'children' holds the 16 possible branches.
+    static NodePtr make_branch() {
+        NodePtr n = std::make_shared<TrieNode>();
+        n->type = NODE_BRANCH;
+        return n;
+    }
+};
+// Hex-Prefix encoding for leaf and extension nodes
+static Bytes hex_prefix_encode(const Nibbles& nibbles, bool is_leaf) {
+    int flag = is_leaf ? 2 : 0;
+    bool odd = (nibbles.size() % 2) != 0;
+    Bytes result;
+    if (odd) {
+        result.push_back(static_cast<uint8_t>((flag + 1) << 4 | nibbles[0]));
+        for (size_t i = 1; i < nibbles.size(); i += 2)
+            result.push_back(static_cast<uint8_t>((nibbles[i] << 4) | nibbles[i + 1]));
+    } else {
+        result.push_back(static_cast<uint8_t>(flag << 4));
+        for (size_t i = 0; i < nibbles.size(); i += 2)
+            result.push_back(static_cast<uint8_t>((nibbles[i] << 4) | nibbles[i + 1]));
+    }
+    return result;
+}
+// Compute the length of the shared prefix between two nibble sequences
+static size_t shared_prefix_len(const Nibbles& a, const Nibbles& b) {
+    size_t n = a.size() < b.size() ? a.size() : b.size();
+    for (size_t i = 0; i < n; i++)
+        if (a[i] != b[i]) return i;
+    return n;
+}
+// Main Merkle Patricia Trie class
+class MerklePatriciaTrie {
+    public:
+    MerklePatriciaTrie() : root_(TrieNode::make_null()) {}
+private:
+    NodePtr root_;
+};
 // test code
-int main()
-{
-    std::cout << "--- Testing Keccak-256 ---" << std::endl;
-    std::string test_str = "hello";
-    Bytes test_bytes(test_str.begin(), test_str.end());
-    Hash h = keccak::sha3_256(test_bytes);
-    std::cout << "sha3(\"hello\"): " << hex(h) << std::endl;
-    // Expected for Keccak-256("hello"):
-    // 1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8
-    std::cout << "\n--- Testing RLP Encoding ---" << std::endl;
-    std::string rlp_test = "dog";
-    Bytes rlp_encoded = rlp::encode_string(rlp_test);
-    std::cout << "RLP(\"dog\"): 0x" << hex(rlp_encoded) << std::endl;
-    // Expected for RLP("dog"): 83646f67 (0x80 + length 3, then 'd','o','g')
-    std::cout << "\n--- Testing Nibble Conversion ---" << std::endl;
-    Bytes key = {0xCA, 0xFE};
-    Nibbles n = to_nibbles(key);
-    std::cout << "Nibbles of 0xCAFE: ";
-    for (auto nib : n)
-        std::cout << std::hex << (int)nib << " ";
-    std::cout << std::dec << std::endl;
+int main() {
+    auto leaf = TrieNode::make_leaf({0x01, 0x02}, {'v', 'a', 'l'});
+    std::cout << "Node created. Type: " << leaf->type << std::endl;
+    // Verify Hex-Prefix
+    Bytes hp = hex_prefix_encode({0x0f}, true); // Odd length leaf
+    std::cout << "Hex-Prefix (Leaf, Odd): 0x" << hex(hp) << " (Expected: 3f)" << std::endl;
     return 0;
 }
+// int main()
+// {
+//     std::cout << "--- Testing Keccak-256 ---" << std::endl;
+//     std::string test_str = "hello";
+//     Bytes test_bytes(test_str.begin(), test_str.end());
+//     Hash h = keccak::sha3_256(test_bytes);
+//     std::cout << "sha3(\"hello\"): " << hex(h) << std::endl;
+//     // Expected for Keccak-256("hello"):
+//     // 1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8
+//     std::cout << "\n--- Testing RLP Encoding ---" << std::endl;
+//     std::string rlp_test = "dog";
+//     Bytes rlp_encoded = rlp::encode_string(rlp_test);
+//     std::cout << "RLP(\"dog\"): 0x" << hex(rlp_encoded) << std::endl;
+//     // Expected for RLP("dog"): 83646f67 (0x80 + length 3, then 'd','o','g')
+//     std::cout << "\n--- Testing Nibble Conversion ---" << std::endl;
+//     Bytes key = {0xCA, 0xFE};
+//     Nibbles n = to_nibbles(key);
+//     std::cout << "Nibbles of 0xCAFE: ";
+//     for (auto nib : n)
+//         std::cout << std::hex << (int)nib << " ";
+//     std::cout << std::dec << std::endl;
+//     return 0;
+// }
