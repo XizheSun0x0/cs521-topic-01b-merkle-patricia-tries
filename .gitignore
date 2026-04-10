@@ -45,3 +45,108 @@
 
 #vscode
 .vscode/
+
+# ==========================================
+# 1. 核心编译产物与中间文件 (C++/CMake)
+# ==========================================
+*.obj
+*.o
+*.d
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+*.exp
+*.pdb
+*.ilk
+*.idb
+
+# ==========================================
+# 2. CMake 基础忽略项
+# ==========================================
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+install/
+CTestTestfile.cmake
+Makefile
+_deps/
+
+# 忽略个人本地预设文件
+CMakeUserPresets.json
+
+# 忽略自动生成的预设目录
+CMakePresets.json.user
+
+# ==========================================
+# 3. 你要求的特定构建目录
+# 忽略任何名称中包含 "cmake_build" 的文件夹
+# ==========================================
+*cmake_build*/
+out/
+lib/
+bin/
+
+# ==========================================
+# 4. Qt Creator / Qt 相关
+# ==========================================
+*.user
+*.user.*
+*.pyc
+.qmt/
+
+# ==========================================
+# 5. 常见 IDE 配置文件
+# ==========================================
+# Visual Studio
+.vs/
+*.sln
+*.vcxproj
+*.filters
+*.user
+
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# CLion / JetBrains
+.idea/
+
+# Qt Creator
+.qtcreator/
+
+# ==========================================
+# 6. 其他系统与日志
+# ==========================================
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+
+# ==========================================
+# 7. vcpkg 相关 (清单模式与本地缓存)
+# ==========================================
+# 自动生成的依赖库安装目录（最核心，通常包含几百MB甚至数GB的二进制文件）
+vcpkg_installed/
+
+# vcpkg 导出的各种包或环境
+vcpkg_export/
+
+# vcpkg 清单模式下的本地用户配置文件
+vcpkg-configuration.json.user
+vcpkg-manifest.json.user
+
+# 如果你将 vcpkg 作为子模块放入了项目内，且不希望跟踪其构建过程：
+# vcpkg/buildtrees/
+# vcpkg/packages/
+# vcpkg/downloads/
+# vcpkg/installed/
