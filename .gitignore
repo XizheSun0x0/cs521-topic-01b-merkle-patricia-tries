@@ -144,7 +144,7 @@ vcpkg_export/
 # vcpkg 清单模式下的本地用户配置文件
 vcpkg-configuration.json.user
 vcpkg-manifest.json.user
-
+build/
 # 如果你将 vcpkg 作为子模块放入了项目内，且不希望跟踪其构建过程：
 # vcpkg/buildtrees/
 # vcpkg/packages/
