@@ -234,18 +234,208 @@ static size_t shared_prefix_len(const Nibbles& a, const Nibbles& b) {
 class MerklePatriciaTrie {
     public:
     MerklePatriciaTrie() : root_(TrieNode::make_null()) {}
+    void put(const Bytes& key, const Bytes& value) {
+        Nibbles nibbles = to_nibbles(key);
+        root_ = insert(root_, nibbles, 0, value);
+    }
+
+    void put(const std::string& key, const std::string& value) {
+        put(Bytes(key.begin(), key.end()), Bytes(value.begin(), value.end()));
+    }
 private:
     NodePtr root_;
+    // Compute the hash of a node, using caching to avoid redundant calculations
+    Hash hash_node(const NodePtr& node) const {
+        if (!node || node->type == NODE_NULL) {
+            Bytes empty_rlp(1, 0x80);
+            return keccak::sha3_256(empty_rlp);
+        }
+        if (!node->cached_hash.empty()) return node->cached_hash;
+
+        Bytes encoded = rlp_encode_node(node);
+        Hash h = keccak::sha3_256(encoded);
+        node->cached_hash = h;
+        return h;
+    }
+    // Get the reference for a child node, which is either the hash or the RLP encoding if it's small
+    Bytes rlp_encode_node(const NodePtr& node) const {
+        if (!node || node->type == NODE_NULL) return Bytes(1, 0x80);
+
+        switch (node->type) {
+            case NODE_LEAF: {
+                Bytes hp = hex_prefix_encode(node->partial, true);
+                std::vector<Bytes> items;
+                items.push_back(rlp::encode_string(hp));
+                items.push_back(rlp::encode_string(node->value));
+                return rlp::encode_list(items);
+            }
+            case NODE_EXTENSION: {
+                Bytes hp = hex_prefix_encode(node->partial, false);
+                Bytes child_ref = node_reference(node->next);
+                std::vector<Bytes> items;
+                items.push_back(rlp::encode_string(hp));
+                items.push_back(child_ref);
+                return rlp::encode_list(items);
+            }
+            case NODE_BRANCH: {
+                std::vector<Bytes> items;
+                for (int i = 0; i < 16; i++) {
+                    if (node->children[i])
+                        items.push_back(node_reference(node->children[i]));
+                    else
+                        items.push_back(rlp::encode_string(Bytes()));
+                }
+                items.push_back(rlp::encode_string(node->branch_value));
+                return rlp::encode_list(items);
+            }
+            default:
+                return Bytes(1, 0x80);
+        }
+    }
+    Bytes node_reference(const NodePtr& node) const {
+        if (!node || node->type == NODE_NULL)
+            return rlp::encode_string(Bytes());
+        Bytes encoded = rlp_encode_node(node);
+        if (encoded.size() < 32) return encoded;
+        return rlp::encode_string(hash_node(node));
+    }
+    // Recursive insertion function
+    NodePtr insert(NodePtr node, const Nibbles& nibbles,
+                   size_t depth, const Bytes& value) {
+        if (!node || node->type == NODE_NULL) {
+            Nibbles remaining(nibbles.begin() + depth, nibbles.end());
+            return TrieNode::make_leaf(remaining, value);
+        }
+        node->invalidate();
+
+        switch (node->type) {
+            case NODE_LEAF:      return insert_at_leaf(node, nibbles, depth, value);
+            case NODE_EXTENSION: return insert_at_extension(node, nibbles, depth, value);
+            case NODE_BRANCH:    return insert_at_branch(node, nibbles, depth, value);
+            default:             return node;
+        }
+    }
+
+    NodePtr insert_at_leaf(NodePtr leaf, const Nibbles& nibbles,
+                           size_t depth, const Bytes& value) {
+        Nibbles remaining(nibbles.begin() + depth, nibbles.end());
+        size_t shared = shared_prefix_len(leaf->partial, remaining);
+
+        if (shared == leaf->partial.size() && shared == remaining.size()) {
+            leaf->value = value;
+            return leaf;
+        }
+
+        NodePtr branch = TrieNode::make_branch();
+
+        if (shared > 0) {
+            Nibbles prefix(leaf->partial.begin(), leaf->partial.begin() + shared);
+            Nibbles leaf_rest(leaf->partial.begin() + shared, leaf->partial.end());
+            Nibbles new_rest(remaining.begin() + shared, remaining.end());
+
+            if (leaf_rest.empty()) {
+                branch->branch_value = leaf->value;
+            } else {
+                uint8_t idx = leaf_rest[0];
+                Nibbles lr(leaf_rest.begin() + 1, leaf_rest.end());
+                branch->children[idx] = TrieNode::make_leaf(lr, leaf->value);
+            }
+            if (new_rest.empty()) {
+                branch->branch_value = value;
+            } else {
+                uint8_t idx = new_rest[0];
+                Nibbles nr(new_rest.begin() + 1, new_rest.end());
+                branch->children[idx] = TrieNode::make_leaf(nr, value);
+            }
+            return TrieNode::make_extension(prefix, branch);
+        }
+
+        if (leaf->partial.empty()) {
+            branch->branch_value = leaf->value;
+        } else {
+            uint8_t idx = leaf->partial[0];
+            Nibbles lr(leaf->partial.begin() + 1, leaf->partial.end());
+            branch->children[idx] = TrieNode::make_leaf(lr, leaf->value);
+        }
+        if (remaining.empty()) {
+            branch->branch_value = value;
+        } else {
+            uint8_t idx = remaining[0];
+            Nibbles nr(remaining.begin() + 1, remaining.end());
+            branch->children[idx] = TrieNode::make_leaf(nr, value);
+        }
+        return branch;
+    }
+
+    NodePtr insert_at_extension(NodePtr ext, const Nibbles& nibbles,
+                                size_t depth, const Bytes& value) {
+        Nibbles remaining(nibbles.begin() + depth, nibbles.end());
+        size_t shared = shared_prefix_len(ext->partial, remaining);
+
+        if (shared == ext->partial.size()) {
+            ext->next = insert(ext->next, nibbles, depth + shared, value);
+            return ext;
+        }
+
+        NodePtr branch = TrieNode::make_branch();
+
+        if (shared + 1 < ext->partial.size()) {
+            Nibbles ext_rest(ext->partial.begin() + shared + 1, ext->partial.end());
+            branch->children[ext->partial[shared]] =
+                TrieNode::make_extension(ext_rest, ext->next);
+        } else {
+            branch->children[ext->partial[shared]] = ext->next;
+        }
+
+        if (shared < remaining.size()) {
+            uint8_t idx = remaining[shared];
+            Nibbles nr(remaining.begin() + shared + 1, remaining.end());
+            branch->children[idx] = TrieNode::make_leaf(nr, value);
+        } else {
+            branch->branch_value = value;
+        }
+
+        if (shared > 0) {
+            Nibbles prefix(ext->partial.begin(), ext->partial.begin() + shared);
+            return TrieNode::make_extension(prefix, branch);
+        }
+        return branch;
+    }
+
+    NodePtr insert_at_branch(NodePtr branch, const Nibbles& nibbles,
+                             size_t depth, const Bytes& value) {
+        if (depth == nibbles.size()) {
+            branch->branch_value = value;
+            return branch;
+        }
+        uint8_t idx = nibbles[depth];
+        branch->children[idx] = insert(branch->children[idx], nibbles, depth + 1, value);
+        return branch;
+    }
 };
 // test code
 int main() {
-    auto leaf = TrieNode::make_leaf({0x01, 0x02}, {'v', 'a', 'l'});
-    std::cout << "Node created. Type: " << leaf->type << std::endl;
-    // Verify Hex-Prefix
-    Bytes hp = hex_prefix_encode({0x0f}, true); // Odd length leaf
-    std::cout << "Hex-Prefix (Leaf, Odd): 0x" << hex(hp) << " (Expected: 3f)" << std::endl;
+    std::cout << "Testing MPT Insertion" << std::endl;
+    MerklePatriciaTrie mpt;
+    
+    // Test basic leaf insertion
+    mpt.put("dog", "puppy");
+    
+    // Test branching and extension creation
+    mpt.put("do", "verb");
+    mpt.put("horse", "stallion");
+    
+    std::cout << "Insertion executed without crashing." << std::endl;
     return 0;
 }
+// int main() {
+//     auto leaf = TrieNode::make_leaf({0x01, 0x02}, {'v', 'a', 'l'});
+//     std::cout << "Node created. Type: " << leaf->type << std::endl;
+//     // Verify Hex-Prefix
+//     Bytes hp = hex_prefix_encode({0x0f}, true); // Odd length leaf
+//     std::cout << "Hex-Prefix (Leaf, Odd): 0x" << hex(hp) << " (Expected: 3f)" << std::endl;
+//     return 0;
+// }
 // int main()
 // {
 //     std::cout << "--- Testing Keccak-256 ---" << std::endl;
