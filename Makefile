@@ -1,23 +1,15 @@
-# Compiler and flags
-CXX = clang++
-CXXFLAGS = -std=c++14 -O0 -g -Wall
+CXX      ?= clang++
+CXXFLAGS  = -std=c++14 -O2 -Wall
 
-# Target binary name
-TARGET = mpt_test*
+.PHONY: all clean server localtest
 
-# Source files
-SRCS = merkle_patricia_trie.cpp
+all: localtest server
 
-# Default rule: build the binary
-all: $(TARGET)
+localtest: localtest.cpp merkle_patricia_trie.h
+	$(CXX) $(CXXFLAGS) -o localtest localtest.cpp
 
-$(TARGET): $(SRCS)
-	$(CXX) $(CXXFLAGS) -o $(TARGET) $(SRCS)
+server: server.cpp merkle_patricia_trie.h
+	$(CXX) $(CXXFLAGS) -o server server.cpp
 
-# Rule to build and run immediately
-run: $(TARGET)
-	./$(TARGET)
-
-# Rule to clean up build artifacts
 clean:
-	rm -rf $(TARGET)
+	rm -f localtest server
