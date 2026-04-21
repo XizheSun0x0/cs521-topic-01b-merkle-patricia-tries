@@ -150,3 +150,7 @@ build/
 # vcpkg/packages/
 # vcpkg/downloads/
 # vcpkg/installed/
+
+# Vue 
+node_modules/
+dist/  
