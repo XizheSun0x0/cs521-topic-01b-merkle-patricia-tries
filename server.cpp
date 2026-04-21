@@ -1,0 +1,3 @@
+//server.cpp — A simple POSIX socket server for handling HTTP requests
+//This server provides a RESTful API to interact with the Merkle Patricia Trie. It supports operations to insert, retrieve, delete key-value pairs, and generate/verify Merkle proofs. The trie structure can also be visualized as JSON.   
+//Note: This server is intended for demonstration and testing purposes. It is not optimized for performance or security and should not be used in production environments.
