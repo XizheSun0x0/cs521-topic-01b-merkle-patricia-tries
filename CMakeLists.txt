@@ -1,18 +1,11 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.10)
+project(MerklePatriciaTrie LANGUAGES CXX)
 
-# set your project name here
-set(PROJECT_NAME "merkle_patricia_tries")
-
-project(${PROJECT_NAME} LANGUAGES CXX)
-
-# modify cpp std version here
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# add cpp resources files
-file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS "merkle_patricia_trie.cpp")
+# ── localtest: standalone test runner ──
+add_executable(localtest localtest.cpp)
 
-# add executable target
-set(EXE_NAME "test_app") # or set(EXE_NAME ${PROJECT_NAME})
-add_executable(${EXE_NAME} ${SRC_FILES})
-
+# ── server: HTTP API server for the Vue frontend ──
+add_executable(server server.cpp)
