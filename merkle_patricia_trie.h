@@ -282,15 +282,25 @@ public:
     /** Builds a proof for a key in the trie. */
     std::vector<ProofItem> generate_proof(const std::string &key) const
     {
+        //TODO: Implement proof generation logic
+        //issue #7
     }
     /** Verifies a proof for a key-value pair against a given root hash. */
     static bool verify_proof(const Hash &er, const std::string &key, const std::string &value, const std::vector<ProofItem> &proof)
     {
+        //TODO: Implement proof verification logic
+        //issue #6
     }
-    void reset() {}
+    /** Resets the trie to its initial state. */
+    void reset() {
+        //TODO: Implement trie reset logic
+        //issue #8
+    }
     const NodePtr &root_node() const { return root_; }
     std::vector<int> proof_node_ids(const std::string &key) const
     {
+        //TODO: Implement logic to collect node IDs involved in a proof
+        //issue #9
     }
     void print_tree() const
     {
@@ -611,12 +621,19 @@ private:
     /** Builds a proof for a key in the trie. */
     void build_proof(const NodePtr &node, const Nibbles &nib, size_t d, std::vector<ProofItem> &proof) const
     {
+        //TODO: Implement proof building logic
+        //issue #10
     }
     // /** Collects the IDs of nodes involved in a proof. */
-    void collect_proof_ids(const NodePtr &node, const Nibbles &nib, size_t d, std::vector<int> &ids) const {}
+    void collect_proof_ids(const NodePtr &node, const Nibbles &nib, size_t d, std::vector<int> &ids) const {
+        //TODO: Implement logic to collect node IDs involved in a proof
+        //issue #12
+    }
     /** Checks if a byte sequence contains another byte sequence. */
     static bool contains_bytes(const Bytes &h, const Bytes &n)
     {
+        //TODO: Implement byte sequence containment logic
+        //issue #13
     }
     // /** Prints the structure of a node in the trie. */
     void print_node(const NodePtr &node, int indent) const
