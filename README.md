@@ -10,3 +10,5 @@ Or run with CMake
 ```bash
 cmake --build build;./build/test_app;rm -rf build         
 ```
+
+<!-- Fix #20 -->
