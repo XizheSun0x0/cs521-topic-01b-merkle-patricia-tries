@@ -10,3 +10,11 @@ Or run with CMake
 ```bash
 cmake --build build;./build/test_app;rm -rf build         
 ```
+
+---
+
+## Server API Reference
+
+Base URL: `http://localhost:8080`
+
+All endpoints return JSON. CORS headers are included (`Access-Control-Allow-Origin: *`).
