@@ -170,6 +170,22 @@ static std::string handle(const std::string &method, const std::string &path, co
     if (method == "GET" && path == "/health"){
         return http_response(200, "{\"status\":\"ok\"}");
     }
+    // GET /entries — all stored key-value pairs
+    if (method == "GET" && path == "/entries")
+    {
+        std::ostringstream ss;
+        ss << "{\"entries\":[";
+        bool first = true;
+        for (std::map<std::string, std::string>::const_iterator it = g_entries.begin(); it != g_entries.end(); ++it)
+        {
+            if (!first)
+                ss << ",";
+            first = false;
+            ss << "{\"key\":\"" << json_escape(it->first) << "\",\"value\":\"" << json_escape(it->second) << "\"}";
+        }
+        ss << "]}";
+        return http_response(200, ss.str());
+    }
     return http_response(404, "{\"error\":\"Not found\"}");
 
 }
