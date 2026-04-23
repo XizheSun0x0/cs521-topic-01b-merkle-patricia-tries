@@ -153,4 +153,8 @@ build/
 
 # Vue 
 node_modules/
-dist/  
+dist/ 
+
+#runnable files
+server
+localtest
