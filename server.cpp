@@ -197,6 +197,20 @@ static std::string handle(const std::string &method, const std::string &path, co
         return http_response(200, ss.str());
     }
 
+    // POST /put — insert or update a key-value pair
+    if (method == "POST" && path == "/put")
+    {
+        std::string key = json_get_string(body, "key");
+        std::string value = json_get_string(body, "value");
+        if (key.empty())
+            return http_response(400, "{\"error\":\"key is required\"}");
+        if (value.empty())
+            value = "(empty)";
+        g_trie.put(key, value);
+        g_entries[key] = value;
+        return http_response(200, "{\"ok\":true,\"root\":\"" + g_trie.root_hash_hex() + "\"}");
+    }
+
     return http_response(404, "{\"error\":\"Not found\"}");
 
 }
