@@ -247,6 +247,42 @@ static std::string handle(const std::string &method, const std::string &path, co
         return http_response(200, "{\"deleted\":" + std::string(found ? "true" : "false") + ",\"root\":\"" + g_trie.root_hash_hex() + "\"}");
     }
 
+    // POST /proof — generate a proof for a key and verify it
+    if (method == "POST" && path == "/proof")
+    {
+        std::string key = json_get_string(body, "key");
+        if (key.empty())
+            return http_response(400, "{\"error\":\"key is required\"}");
+        Optional<std::string> val = g_trie.get(key);
+        if (!val)
+            return http_response(200, "{\"found\":false}");
+        std::vector<ProofItem> proof = g_trie.generate_proof(key);
+        Hash root = g_trie.root_hash();
+        bool verified = MerklePatriciaTrie::verify_proof(root, key, val.value(), proof);
+        std::vector<int> pids = g_trie.proof_node_ids(key);
+        std::ostringstream ss;
+        ss << "{\"found\":true,\"value\":\"" << json_escape(val.value())
+           << "\",\"verified\":" << (verified ? "true" : "false")
+           << ",\"proof_length\":" << proof.size() << ",\"proof_ids\":[";
+        for (size_t i = 0; i < pids.size(); i++)
+        {
+            if (i)
+                ss << ",";
+            ss << pids[i];
+        }
+        ss << "],\"nodes\":[";
+        for (size_t i = 0; i < proof.size(); i++)
+        {
+            if (i)
+                ss << ",";
+            Hash h = keccak::sha3_256(proof[i].rlp_encoded);
+            ss << "{\"index\":" << i << ",\"hash\":\"" << to_hex(h) << "\",\"size\":" << proof[i].rlp_encoded.size() << "}";
+        }
+        ss << "]}";
+        return http_response(200, ss.str());
+    }
+
+
     return http_response(404, "{\"error\":\"Not found\"}");
 
 }
