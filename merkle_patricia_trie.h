@@ -293,8 +293,8 @@ public:
     }
     /** Resets the trie to its initial state. */
     void reset() {
-        //TODO: Implement trie reset logic
-        //issue #8
+        root_ = TrieNode::make_null();
+        TrieNode::next_id = 0;
     }
     const NodePtr &root_node() const { return root_; }
     std::vector<int> proof_node_ids(const std::string &key) const
