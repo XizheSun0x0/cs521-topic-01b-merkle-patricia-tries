@@ -311,6 +311,24 @@ static std::string handle(const std::string &method, const std::string &path, co
         return http_response(200, "{\"ok\":true,\"root\":\"" + g_trie.root_hash_hex() + "\"}");
     }
 
+    // POST /demo — load sample data
+    if (method == "POST" && path == "/demo")
+    {
+        g_trie.reset();
+        g_entries.clear();
+        struct KV
+        {
+            const char *k;
+            const char *v;
+        };
+        KV demo[] = {{"dog", "puppy"}, {"doge", "coin"}, {"do", "verb"}, {"horse", "stallion"}, {"apple", "fruit"}, {"ant", "insect"}};
+        for (int i = 0; i < 6; i++)
+        {
+            g_trie.put(demo[i].k, demo[i].v);
+            g_entries[demo[i].k] = demo[i].v;
+        }
+        return http_response(200, "{\"ok\":true,\"root\":\"" + g_trie.root_hash_hex() + "\",\"count\":6}");
+    }
 
     return http_response(404, "{\"error\":\"Not found\"}");
 
