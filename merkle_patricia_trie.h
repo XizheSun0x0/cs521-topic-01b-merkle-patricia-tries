@@ -621,8 +621,41 @@ private:
     /** Builds a proof for a key in the trie. */
     void build_proof(const NodePtr &node, const Nibbles &nib, size_t d, std::vector<ProofItem> &proof) const
     {
-        //TODO: Implement proof building logic
-        //issue #10
+        if (!node || node->type == NODE_NULL)
+            return;
+        ProofItem it;
+        it.rlp_encoded = rlp_encode_node(node);
+        proof.push_back(it);
+        switch (node->type)
+        {
+        case NODE_LEAF:
+            break;
+        case NODE_EXTENSION:
+        {
+            size_t pl = node->partial.size();
+            if (d + pl <= nib.size())
+            {
+                bool m = true;
+                for (size_t i = 0; i < pl && m; i++)
+                    m = (node->partial[i] == nib[d + i]);
+                if (m)
+                    build_proof(node->next, nib, d + pl, proof);
+            }
+            break;
+        }
+        case NODE_BRANCH:
+        {
+            if (d < nib.size())
+            {
+                uint8_t idx = nib[d];
+                if (node->children[idx])
+                    build_proof(node->children[idx], nib, d + 1, proof);
+            }
+            break;
+        }
+        default:
+            break;
+        }
     }
     // /** Collects the IDs of nodes involved in a proof. */
     void collect_proof_ids(const NodePtr &node, const Nibbles &nib, size_t d, std::vector<int> &ids) const {
