@@ -139,6 +139,28 @@ static void parse_http(const std::string &raw, std::string &method, std::string 
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+//  HTTP response builder
+// ═══════════════════════════════════════════════════════════════════════════════
+static std::string http_response(int code, const std::string &body)
+{
+    const char *status = "200 OK";
+    if (code == 400)
+        status = "400 Bad Request";
+    else if (code == 404)
+        status = "404 Not Found";
+    std::ostringstream ss;
+    ss << "HTTP/1.1 " << status << "\r\n"
+       << "Content-Type: application/json\r\n"
+       << "Access-Control-Allow-Origin: *\r\n"
+       << "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+       << "Access-Control-Allow-Headers: Content-Type\r\n"
+       << "Content-Length: " << body.size() << "\r\n"
+       << "Connection: close\r\n\r\n"
+       << body;
+    return ss.str();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 //  Main — POSIX socket server
 // ═══════════════════════════════════════════════════════════════════════════════
 int main(int argc, char *argv[])
