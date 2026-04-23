@@ -235,6 +235,18 @@ static std::string handle(const std::string &method, const std::string &path, co
         return http_response(200, "{\"found\":false}");
     }
 
+    // POST /delete — remove a key
+    if (method == "POST" && path == "/delete")
+    {
+        std::string key = json_get_string(body, "key");
+        if (key.empty())
+            return http_response(400, "{\"error\":\"key is required\"}");
+        bool found = g_trie.remove(key);
+        if (found)
+            g_entries.erase(key);
+        return http_response(200, "{\"deleted\":" + std::string(found ? "true" : "false") + ",\"root\":\"" + g_trie.root_hash_hex() + "\"}");
+    }
+
     return http_response(404, "{\"error\":\"Not found\"}");
 
 }
