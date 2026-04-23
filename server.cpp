@@ -218,7 +218,48 @@ int main(int argc, char *argv[])
               << "  │  Ctrl+C to stop                              │\n"
               << "  └───────────────────────────────────────────────┘\n\n";
 
-    while (true){}
+    // Main server loop: accept connections and handle requests
+    while (true){
+        struct sockaddr_in ca;
+        socklen_t cl = sizeof(ca);
+        int cfd = accept(sfd, (struct sockaddr *)&ca, &cl);
+        if (cfd < 0)
+            continue;
+
+        char buf[65536];
+        int total = 0;
+        while (total < (int)sizeof(buf) - 1)
+        {
+            int n = read(cfd, buf + total, sizeof(buf) - 1 - total);
+            if (n <= 0)
+                break;
+            total += n;
+            buf[total] = '\0';
+            if (strstr(buf, "\r\n\r\n"))
+            {
+                char *clh = strcasestr(buf, "Content-Length:");
+                if (clh)
+                {
+                    int clen = atoi(clh + 15);
+                    char *bstart = strstr(buf, "\r\n\r\n") + 4;
+                    if (total - (bstart - buf) >= clen)
+                        break;
+                }
+                else
+                    break;
+            }
+        }
+
+        std::string raw(buf, total), method, path, body;
+        parse_http(raw, method, path, body);
+
+        std::string resp = handle(method, path, body);
+        std::cout << "  " << method << " " << path << "\n";
+
+        ssize_t w = write(cfd, resp.c_str(), resp.size());
+        (void)w;
+        close(cfd);
+    }
     close(sfd);
     return 0;
 }
