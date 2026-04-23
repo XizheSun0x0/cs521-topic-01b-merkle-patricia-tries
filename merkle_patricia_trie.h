@@ -659,8 +659,29 @@ private:
     }
     // /** Collects the IDs of nodes involved in a proof. */
     void collect_proof_ids(const NodePtr &node, const Nibbles &nib, size_t d, std::vector<int> &ids) const {
-        //TODO: Implement logic to collect node IDs involved in a proof
-        //issue #12
+        if (!node || node->type == NODE_NULL)
+            return;
+        ids.push_back(node->node_id);
+        if (node->type == NODE_LEAF)
+            return;
+        if (node->type == NODE_EXTENSION)
+        {
+            size_t pl = node->partial.size();
+            if (d + pl <= nib.size())
+            {
+                bool m = true;
+                for (size_t i = 0; i < pl && m; i++)
+                    m = (node->partial[i] == nib[d + i]);
+                if (m)
+                    collect_proof_ids(node->next, nib, d + pl, ids);
+            }
+        }
+        if (node->type == NODE_BRANCH && d < nib.size())
+        {
+            uint8_t idx = nib[d];
+            if (node->children[idx])
+                collect_proof_ids(node->children[idx], nib, d + 1, ids);
+        }
     }
     /** Checks if a byte sequence contains another byte sequence. */
     static bool contains_bytes(const Bytes &h, const Bytes &n)
