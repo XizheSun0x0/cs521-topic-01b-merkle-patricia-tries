@@ -161,6 +161,20 @@ static std::string http_response(int code, const std::string &body)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+//  Route handler
+// ═══════════════════════════════════════════════════════════════════════════════
+static std::string handle(const std::string &method, const std::string &path, const std::string &body){
+    if (method == "OPTIONS")
+        return http_response(200, "");
+    // GET/health — simple health check endpoint
+    if (method == "GET" && path == "/health"){
+        return http_response(200, "{\"status\":\"ok\"}");
+    }
+    return http_response(404, "{\"error\":\"Not found\"}");
+
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 //  Main — POSIX socket server
 // ═══════════════════════════════════════════════════════════════════════════════
 int main(int argc, char *argv[])
