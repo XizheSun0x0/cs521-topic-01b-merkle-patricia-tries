@@ -632,8 +632,15 @@ private:
     /** Checks if a byte sequence contains another byte sequence. */
     static bool contains_bytes(const Bytes &h, const Bytes &n)
     {
-        //TODO: Implement byte sequence containment logic
-        //issue #13
+        if (n.empty())
+            return true;
+        if (h.size() < n.size())
+            return false;
+            // Simple byte-wise search 
+        for (size_t i = 0; i <= h.size() - n.size(); i++)
+            if (std::memcmp(h.data() + i, n.data(), n.size()) == 0)
+                return true;
+        return false;
     }
     // /** Prints the structure of a node in the trie. */
     void print_node(const NodePtr &node, int indent) const
