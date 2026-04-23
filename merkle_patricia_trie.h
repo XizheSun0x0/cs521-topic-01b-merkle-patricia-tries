@@ -299,8 +299,9 @@ public:
     const NodePtr &root_node() const { return root_; }
     std::vector<int> proof_node_ids(const std::string &key) const
     {
-        //TODO: Implement logic to collect node IDs involved in a proof
-        //issue #9
+        std::vector<int> ids;
+        collect_proof_ids(root_, to_nibbles(Bytes(key.begin(), key.end())), 0, ids);
+        return ids;
     }
     void print_tree() const
     {
@@ -621,19 +622,80 @@ private:
     /** Builds a proof for a key in the trie. */
     void build_proof(const NodePtr &node, const Nibbles &nib, size_t d, std::vector<ProofItem> &proof) const
     {
-        //TODO: Implement proof building logic
-        //issue #10
+        if (!node || node->type == NODE_NULL)
+            return;
+        ProofItem it;
+        it.rlp_encoded = rlp_encode_node(node);
+        proof.push_back(it);
+        switch (node->type)
+        {
+        case NODE_LEAF:
+            break;
+        case NODE_EXTENSION:
+        {
+            size_t pl = node->partial.size();
+            if (d + pl <= nib.size())
+            {
+                bool m = true;
+                for (size_t i = 0; i < pl && m; i++)
+                    m = (node->partial[i] == nib[d + i]);
+                if (m)
+                    build_proof(node->next, nib, d + pl, proof);
+            }
+            break;
+        }
+        case NODE_BRANCH:
+        {
+            if (d < nib.size())
+            {
+                uint8_t idx = nib[d];
+                if (node->children[idx])
+                    build_proof(node->children[idx], nib, d + 1, proof);
+            }
+            break;
+        }
+        default:
+            break;
+        }
     }
     // /** Collects the IDs of nodes involved in a proof. */
     void collect_proof_ids(const NodePtr &node, const Nibbles &nib, size_t d, std::vector<int> &ids) const {
-        //TODO: Implement logic to collect node IDs involved in a proof
-        //issue #12
+        if (!node || node->type == NODE_NULL)
+            return;
+        ids.push_back(node->node_id);
+        if (node->type == NODE_LEAF)
+            return;
+        if (node->type == NODE_EXTENSION)
+        {
+            size_t pl = node->partial.size();
+            if (d + pl <= nib.size())
+            {
+                bool m = true;
+                for (size_t i = 0; i < pl && m; i++)
+                    m = (node->partial[i] == nib[d + i]);
+                if (m)
+                    collect_proof_ids(node->next, nib, d + pl, ids);
+            }
+        }
+        if (node->type == NODE_BRANCH && d < nib.size())
+        {
+            uint8_t idx = nib[d];
+            if (node->children[idx])
+                collect_proof_ids(node->children[idx], nib, d + 1, ids);
+        }
     }
     /** Checks if a byte sequence contains another byte sequence. */
     static bool contains_bytes(const Bytes &h, const Bytes &n)
     {
-        //TODO: Implement byte sequence containment logic
-        //issue #13
+        if (n.empty())
+            return true;
+        if (h.size() < n.size())
+            return false;
+            // Simple byte-wise search 
+        for (size_t i = 0; i <= h.size() - n.size(); i++)
+            if (std::memcmp(h.data() + i, n.data(), n.size()) == 0)
+                return true;
+        return false;
     }
     // /** Prints the structure of a node in the trie. */
     void print_node(const NodePtr &node, int indent) const
