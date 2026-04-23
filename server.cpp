@@ -17,6 +17,32 @@ static MerklePatriciaTrie g_trie;
 static std::map<std::string, std::string> g_entries;
 
 // ═══════════════════════════════════════════════════════════════════════════════
+//  JSON helpers (no library needed)
+// ═══════════════════════════════════════════════════════════════════════════════
+static std::string json_escape(const std::string &s)
+{
+    std::string out;
+    // Reserve enough space to avoid multiple reallocations
+    out.reserve(s.size());
+    // Escape special characters for JSON strings
+    for (size_t i = 0; i < s.size(); i++)
+    {
+        char c = s[i];
+        if (c == '"')
+            out += "\\\"";
+        else if (c == '\\')
+            out += "\\\\";
+        else if (c == '\n')
+            out += "\\n";
+        else if (c == '\t')
+            out += "\\t";
+        else
+            out += c;
+    }
+    return out;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 //  Main — POSIX socket server
 // ═══════════════════════════════════════════════════════════════════════════════
 int main(int argc, char *argv[])
