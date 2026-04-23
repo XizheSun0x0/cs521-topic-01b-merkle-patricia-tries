@@ -303,6 +303,14 @@ static std::string handle(const std::string &method, const std::string &path, co
         return http_response(200, "{\"verified\":" + std::string(verified ? "true" : "false") + "}");
     }
 
+    // POST /reset — clear everything
+    if (method == "POST" && path == "/reset")
+    {
+        g_trie.reset();
+        g_entries.clear();
+        return http_response(200, "{\"ok\":true,\"root\":\"" + g_trie.root_hash_hex() + "\"}");
+    }
+
 
     return http_response(404, "{\"error\":\"Not found\"}");
 
