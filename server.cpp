@@ -114,6 +114,31 @@ static void node_to_json(const NodePtr &node, std::ostringstream &ss)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+//  HTTP parser
+// ═══════════════════════════════════════════════════════════════════════════════
+static void parse_http(const std::string &raw, std::string &method, std::string &path, std::string &body)
+{
+    size_t le = raw.find("\r\n");
+    if (le == std::string::npos)
+    {
+        method = path = body = "";
+        return;
+    }
+    // Parse the request line (e.g., "GET /path HTTP/1.1")
+    std::string line = raw.substr(0, le);
+    // Split the request line into method, path, and ignore the HTTP version
+    size_t s1 = line.find(' '), s2 = line.find(' ', s1 + 1);
+    // Extract the HTTP method and path
+    method = line.substr(0, s1);
+    // Extract the path from the request line
+    path = line.substr(s1 + 1, s2 - s1 - 1);
+    // Find the start of the body (after the header section)
+    size_t bs = raw.find("\r\n\r\n");
+    // Extract the body if it exists, otherwise set it to an empty string
+    body = (bs != std::string::npos) ? raw.substr(bs + 4) : "";
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 //  Main — POSIX socket server
 // ═══════════════════════════════════════════════════════════════════════════════
 int main(int argc, char *argv[])
