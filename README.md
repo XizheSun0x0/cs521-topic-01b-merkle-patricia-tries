@@ -234,3 +234,18 @@ Clear the trie completely.
 ```
 
 ---
+
+## Architecture
+
+```
+┌─────────────────────┐        fetch()        ┌─────────────────────┐
+│                     │  ◄──────────────────►  │                     │
+│   Vue 3 Frontend    │    JSON over HTTP      │   C++ Backend       │
+│                     │                        │                     │
+│  • Tree SVG render  │   GET  /root           │  • Keccak-256       │
+│  • Proof highlight  │   GET  /tree           │  • RLP encoding     │
+│  • Entry management │   GET  /entries        │  • MPT engine       │
+│  • Pan/zoom canvas  │   POST /put,get,del    │  • Proof gen/verify │
+│                     │   POST /proof,verify   │  • POSIX HTTP       │
+└─────────────────────┘   POST /demo,reset     └─────────────────────┘
+```
