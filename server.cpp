@@ -1,6 +1,6 @@
-//server.cpp — A simple POSIX socket server for handling HTTP requests
-//This server provides a RESTful API to interact with the Merkle Patricia Trie. It supports operations to insert, retrieve, delete key-value pairs, and generate/verify Merkle proofs. The trie structure can also be visualized as JSON.   
-//Note: This server is intended for demonstration and testing purposes. It is not optimized for performance or security and should not be used in production environments.
+// server.cpp — A simple POSIX socket server for handling HTTP requests
+// This server provides a RESTful API to interact with the Merkle Patricia Trie. It supports operations to insert, retrieve, delete key-value pairs, and generate/verify Merkle proofs. The trie structure can also be visualized as JSON.
+// Note: This server is intended for demonstration and testing purposes. It is not optimized for performance or security and should not be used in production environments.
 #define MPT_IMPLEMENTATION
 #include "merkle_patricia_trie.h"
 
@@ -19,7 +19,8 @@ static std::map<std::string, std::string> g_entries;
 // ═══════════════════════════════════════════════════════════════════════════════
 //  JSON helpers (no library needed)
 // ═══════════════════════════════════════════════════════════════════════════════
-static std::string json_escape(const std::string &s){
+static std::string json_escape(const std::string &s)
+{
     std::string out;
     // Reserve enough space to avoid multiple reallocations
     out.reserve(s.size());
@@ -163,12 +164,19 @@ static std::string http_response(int code, const std::string &body)
 // ═══════════════════════════════════════════════════════════════════════════════
 //  Route handler
 // ═══════════════════════════════════════════════════════════════════════════════
-static std::string handle(const std::string &method, const std::string &path, const std::string &body){
+static std::string handle(const std::string &method, const std::string &path, const std::string &body)
+{
     if (method == "OPTIONS")
         return http_response(200, "");
     // GET/health — simple health check endpoint
-    if (method == "GET" && path == "/health"){
+    if (method == "GET" && path == "/health")
+    {
         return http_response(200, "{\"status\":\"ok\"}");
+    }
+    // GET /root — current trie state root hash
+    if (method == "GET" && path == "/root")
+    {
+        return http_response(200, "{\"root\":\"" + g_trie.root_hash_hex() + "\"}");
     }
     // GET /entries — all stored key-value pairs
     if (method == "GET" && path == "/entries")
@@ -331,7 +339,6 @@ static std::string handle(const std::string &method, const std::string &path, co
     }
 
     return http_response(404, "{\"error\":\"Not found\"}");
-
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -374,12 +381,13 @@ int main(int argc, char *argv[])
     }
     std::cout << "\n"
               << "  ┌───────────────────────────────────────────────┐\n"
-              << "  │  MPT Server: http://localhost:" << port << "              │\n"
-              << "  │  Ctrl+C to stop                              │\n"
+              << "  │  MPT Server: http://localhost:" << port << "  │\n"
+              << "  │  Ctrl+C to stop                               │\n"
               << "  └───────────────────────────────────────────────┘\n\n";
 
     // Main server loop: accept connections and handle requests
-    while (true){
+    while (true)
+    {
         struct sockaddr_in ca;
         socklen_t cl = sizeof(ca);
         int cfd = accept(sfd, (struct sockaddr *)&ca, &cl);
