@@ -282,6 +282,27 @@ static std::string handle(const std::string &method, const std::string &path, co
         return http_response(200, ss.str());
     }
 
+    // POST /verify — verify a proof against a given root (external verification)
+    if (method == "POST" && path == "/verify")
+    {
+        std::string key = json_get_string(body, "key");
+        std::string value = json_get_string(body, "value");
+        std::string root_hex = json_get_string(body, "root");
+        if (key.empty() || value.empty() || root_hex.empty())
+            return http_response(400, "{\"error\":\"key, value, and root are required\"}");
+        // Re-generate proof from current trie and verify against provided root
+        std::vector<ProofItem> proof = g_trie.generate_proof(key);
+        // Decode hex root
+        Hash root;
+        for (size_t i = 0; i + 1 < root_hex.size(); i += 2)
+        {
+            uint8_t byte = static_cast<uint8_t>(std::strtol(root_hex.substr(i, 2).c_str(), NULL, 16));
+            root.push_back(byte);
+        }
+        bool verified = MerklePatriciaTrie::verify_proof(root, key, value, proof);
+        return http_response(200, "{\"verified\":" + std::string(verified ? "true" : "false") + "}");
+    }
+
 
     return http_response(404, "{\"error\":\"Not found\"}");
 
