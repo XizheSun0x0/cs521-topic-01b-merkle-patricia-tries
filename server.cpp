@@ -19,8 +19,7 @@ static std::map<std::string, std::string> g_entries;
 // ═══════════════════════════════════════════════════════════════════════════════
 //  JSON helpers (no library needed)
 // ═══════════════════════════════════════════════════════════════════════════════
-static std::string json_escape(const std::string &s)
-{
+static std::string json_escape(const std::string &s){
     std::string out;
     // Reserve enough space to avoid multiple reallocations
     out.reserve(s.size());
@@ -40,6 +39,78 @@ static std::string json_escape(const std::string &s)
             out += c;
     }
     return out;
+}
+
+// Extracts a string value from a JSON object given a key. This is a very basic implementation and does not handle all edge cases or JSON formats. It assumes the JSON is well-formed and that the value is a string enclosed in double quotes.
+static std::string json_get_string(const std::string &json, const std::string &key)
+{
+    std::string search = "\"" + key + "\"";
+    size_t pos = json.find(search);
+    if (pos == std::string::npos)
+        return "";
+    pos = json.find(":", pos + search.size());
+    if (pos == std::string::npos)
+        return "";
+    pos = json.find("\"", pos + 1);
+    if (pos == std::string::npos)
+        return "";
+    size_t end = pos + 1;
+    while (end < json.size() && !(json[end] == '"' && json[end - 1] != '\\'))
+        end++;
+    if (end >= json.size())
+        return "";
+    return json.substr(pos + 1, end - pos - 1);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  Tree-to-JSON serializer (recursive)
+// ═══════════════════════════════════════════════════════════════════════════════
+static void node_to_json(const NodePtr &node, std::ostringstream &ss)
+{
+    if (!node || node->type == NODE_NULL)
+    {
+        ss << "null";
+        return;
+    }
+    ss << "{\"id\":" << node->node_id << ",";
+    switch (node->type)
+    {
+    case NODE_LEAF:
+        ss << "\"type\":\"LEAF\",\"partial\":\"";
+        for (size_t i = 0; i < node->partial.size(); i++)
+            ss << std::hex << (int)node->partial[i];
+        ss << std::dec << "\",\"value\":\"" << json_escape(std::string(node->value.begin(), node->value.end())) << "\"";
+        break;
+    case NODE_EXTENSION:
+        ss << "\"type\":\"EXT\",\"partial\":\"";
+        for (size_t i = 0; i < node->partial.size(); i++)
+            ss << std::hex << (int)node->partial[i];
+        ss << std::dec << "\",\"child\":";
+        node_to_json(node->next, ss);
+        break;
+    case NODE_BRANCH:
+        ss << "\"type\":\"BRANCH\",\"children\":[";
+        for (int i = 0; i < 16; i++)
+        {
+            if (i > 0)
+                ss << ",";
+            if (node->children[i] && node->children[i]->type != NODE_NULL)
+            {
+                ss << "{\"nibble\":" << i << ",\"node\":";
+                node_to_json(node->children[i], ss);
+                ss << "}";
+            }
+            else
+                ss << "null";
+        }
+        ss << "]";
+        if (!node->branch_value.empty())
+            ss << ",\"value\":\"" << json_escape(std::string(node->branch_value.begin(), node->branch_value.end())) << "\"";
+        break;
+    default:
+        break;
+    }
+    ss << "}";
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
