@@ -186,6 +186,17 @@ static std::string handle(const std::string &method, const std::string &path, co
         ss << "]}";
         return http_response(200, ss.str());
     }
+
+    // GET /tree — full trie structure as JSON
+    if (method == "GET" && path == "/tree")
+    {
+        std::ostringstream ss;
+        ss << "{\"tree\":";
+        node_to_json(g_trie.root_node(), ss);
+        ss << "}";
+        return http_response(200, ss.str());
+    }
+
     return http_response(404, "{\"error\":\"Not found\"}");
 
 }
