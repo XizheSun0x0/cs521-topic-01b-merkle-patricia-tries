@@ -238,7 +238,7 @@ Clear the trie completely.
 ## Architecture
 
 ```
-┌─────────────────────┐        fetch()        ┌─────────────────────┐
+┌─────────────────────┐        fetch()         ┌─────────────────────┐
 │                     │  ◄──────────────────►  │                     │
 │   Vue 3 Frontend    │    JSON over HTTP      │   C++ Backend       │
 │                     │                        │                     │
