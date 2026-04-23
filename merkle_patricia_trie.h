@@ -299,8 +299,9 @@ public:
     const NodePtr &root_node() const { return root_; }
     std::vector<int> proof_node_ids(const std::string &key) const
     {
-        //TODO: Implement logic to collect node IDs involved in a proof
-        //issue #9
+        std::vector<int> ids;
+        collect_proof_ids(root_, to_nibbles(Bytes(key.begin(), key.end())), 0, ids);
+        return ids;
     }
     void print_tree() const
     {
