@@ -211,6 +211,30 @@ static std::string handle(const std::string &method, const std::string &path, co
         return http_response(200, "{\"ok\":true,\"root\":\"" + g_trie.root_hash_hex() + "\"}");
     }
 
+    // POST /get — lookup a key, return value and proof node IDs
+    if (method == "POST" && path == "/get")
+    {
+        std::string key = json_get_string(body, "key");
+        if (key.empty())
+            return http_response(400, "{\"error\":\"key is required\"}");
+        Optional<std::string> val = g_trie.get(key);
+        if (val)
+        {
+            std::vector<int> pids = g_trie.proof_node_ids(key);
+            std::ostringstream ss;
+            ss << "{\"found\":true,\"value\":\"" << json_escape(val.value()) << "\",\"proof_ids\":[";
+            for (size_t i = 0; i < pids.size(); i++)
+            {
+                if (i)
+                    ss << ",";
+                ss << pids[i];
+            }
+            ss << "]}";
+            return http_response(200, ss.str());
+        }
+        return http_response(200, "{\"found\":false}");
+    }
+
     return http_response(404, "{\"error\":\"Not found\"}");
 
 }
