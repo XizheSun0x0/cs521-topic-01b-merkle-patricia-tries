@@ -282,14 +282,40 @@ public:
     /** Builds a proof for a key in the trie. */
     std::vector<ProofItem> generate_proof(const std::string &key) const
     {
-        //TODO: Implement proof generation logic
-        //issue #7
+        std::vector<ProofItem> p;
+        build_proof(root_, to_nibbles(Bytes(key.begin(), key.end())), 0, p);
+        return p;
     }
     /** Verifies a proof for a key-value pair against a given root hash. */
     static bool verify_proof(const Hash &er, const std::string &key, const std::string &value, const std::vector<ProofItem> &proof)
     {
-        //TODO: Implement proof verification logic
-        //issue #6
+        Bytes v(value.begin(), value.end());
+        if (proof.empty())
+            return false;
+        Hash c = keccak::sha3_256(proof[0].rlp_encoded);
+        if (c != er)
+            return false;
+        for (size_t pi = 0; pi + 1 < proof.size(); pi++)
+        {
+            const Bytes &pe = proof[pi].rlp_encoded;
+            const Bytes &ce = proof[pi + 1].rlp_encoded;
+            bool linked = false;
+            if (ce.size() >= 32)
+            {
+                Hash ch = keccak::sha3_256(ce);
+                linked = contains_bytes(pe, ch);
+            }
+            if (!linked)
+                linked = contains_bytes(pe, ce);
+            if (!linked)
+            {
+                Hash ch = keccak::sha3_256(ce);
+                linked = contains_bytes(pe, ch);
+            }
+            if (!linked)
+                return false;
+        }
+        return contains_bytes(proof.back().rlp_encoded, v);
     }
     /** Resets the trie to its initial state. */
     void reset() {
