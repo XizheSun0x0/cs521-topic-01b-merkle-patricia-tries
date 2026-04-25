@@ -29,9 +29,9 @@ project/
 To test code, run in project dir:
 ```bash
 #test in terminal
-make run localtest; ./localtest; make clean
+make localtest; ./localtest; make clean
 #test with graphic interface on VUE
-make run server; ./server; make clean
+make server; ./server; make clean
 ```
 
 **Option B — CMake:**
@@ -63,7 +63,7 @@ npm run dev       # Vite dev server, default http://localhost:5173
 
 #### Test VUE
 
-** In project dir **
+**In project dir**
 ```bash
 cd frontend/mpt-display 
 npm run build
