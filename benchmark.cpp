@@ -39,7 +39,32 @@ static std::string make_value(int i) {
     return std::string(buf);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Pretty printing
+// ─────────────────────────────────────────────────────────────────────────────
+static void print_header(const std::string& title) {
+    std::cout << "\n" << std::string(78, '=') << "\n  " << title << "\n" << std::string(78, '=') << "\n\n";
+}
 
+static void print_row(const std::string& label, int n, double total_ms, double per_op_us) {
+    double ops_sec = (per_op_us > 0) ? 1000000.0 / per_op_us : 0;
+    std::cout << "    " << std::left << std::setw(24) << label
+              << std::right << std::setw(7) << n << " ops"
+              << std::setw(12) << std::fixed << std::setprecision(2) << total_ms << " ms"
+              << std::setw(10) << std::setprecision(2) << per_op_us << " us/op"
+              << std::setw(12) << std::setprecision(0) << ops_sec << " ops/s"
+              << "\n";
+}
+
+static void print_table_header() {
+    std::cout << "    " << std::left << std::setw(24) << "Operation"
+              << std::right << std::setw(10) << "Count"
+              << std::setw(12) << "Total"
+              << std::setw(10) << "Per-op"
+              << std::setw(12) << "Throughput"
+              << "\n";
+    std::cout << "    " << std::string(68, '-') << "\n";
+}
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -47,22 +72,23 @@ static std::string make_value(int i) {
 // ─────────────────────────────────────────────────────────────────────────────
 int main() {
     std::cout << std::fixed;
-    std::cout << "Benchmarking Merkle Patricia Trie with 100,000 entries...\n";
-    const int num_entries = 100000; 
-    std::vector<std::string> keys(num_entries), values(num_entries);
-    for (int i = 0; i < num_entries; i++) {
+    //test all function in this benchmark
+    print_header("Merkle Patricia Trie Benchmark");
+    const int N = 100000;
+    std::vector<std::string> keys(N), values(N);
+    for (int i = 0; i < N; i++) {
         keys[i] = make_key(i);
         values[i] = make_value(i);
     }  
-    //verify Timer, make_key, make_value
-    {
+    MerklePatriciaTrie trie;    
+    print_table_header();
+    print_row("Insert", N, [&]() {
         Timer t;
         t.start();
-        for (int i = 0; i < 1000; i++) {
-            make_key(i);
-            make_value(i);
+        for (int i = 0; i < N; i++) {
+            trie.put(keys[i], values[i]);
         }
-        std::cout << "Key/value generation: " << t.elapsed_ms() << " ms\n";
-    } 
+        return t.elapsed_ms();
+    }(), 0); // per-op will be calculated later
     return 0;
 }
