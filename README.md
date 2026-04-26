@@ -31,8 +31,10 @@ To test code, run in project dir:
 ```bash
 #test in terminal
 make localtest; ./localtest; make clean
-#test with graphic interface on VUE
+#demostrate with graphic interface on VUE
 make server; ./server; make clean
+#run benchmark
+make benchmark; ./benchmark; make clean
 ```
 
 **Option B — CMake:**
@@ -42,11 +44,16 @@ mkdir build && cd build
 cmake ..
 make
 ./localtest
-#test in VUE
+#demonstrate in VUE
 mkdir build && cd build
 cmake ..
 make
 ./server
+#run benchmark
+mkdir build && cd build
+cmake ..
+make
+./benchmark
 ```
 ### Run the server + frontend
 
@@ -60,19 +67,4 @@ make
 cd frontend/mpt-display
 npm install
 npm run dev       # Vite dev server, default http://localhost:5173
-```
-
-## Architecture
-
-```
-┌─────────────────────┐        fetch()         ┌─────────────────────┐
-│                     │  ◄──────────────────►  │                     │
-│   Vue 3 Frontend    │    JSON over HTTP      │   C++ Backend       │
-│                     │                        │                     │
-│  • Tree SVG render  │   GET  /root           │  • Keccak-256       │
-│  • Proof highlight  │   GET  /tree           │  • RLP encoding     │
-│  • Entry management │   GET  /entries        │  • MPT engine       │
-│  • Pan/zoom canvas  │   POST /put,get,del    │  • Proof gen/verify │
-│                     │   POST /proof,verify   │  • POSIX HTTP       │
-└─────────────────────┘   POST /demo,reset     └─────────────────────┘
 ```
