@@ -186,29 +186,179 @@ static void bench_keccak() {
     }
 }
 
+static void bench_determinism() {
+    print_header("BENCHMARK: Insertion Order Determinism");
+
+    int sizes[] = {100, 1000, 5000};
+    for (int si = 0; si < 3; si++) {
+        int n = sizes[si];
+        std::vector<std::string> keys(n), vals(n);
+        for (int i = 0; i < n; i++) { keys[i] = make_key(i); vals[i] = make_value(i); }
+
+        // Forward order
+        MerklePatriciaTrie tA;
+        for (int i = 0; i < n; i++) tA.put(keys[i], vals[i]);
+
+        // Reverse order
+        MerklePatriciaTrie tB;
+        for (int i = n - 1; i >= 0; i--) tB.put(keys[i], vals[i]);
+
+        // Random order (Fisher-Yates)
+        std::vector<int> perm(n);
+        for (int i = 0; i < n; i++) perm[i] = i;
+        for (int i = n - 1; i > 0; i--) std::swap(perm[i], perm[(i * 2654435761u) % (i + 1)]);
+        MerklePatriciaTrie tC;
+        for (int i = 0; i < n; i++) tC.put(keys[perm[i]], vals[perm[i]]);
+
+        Hash hA = tA.root_hash(), hB = tB.root_hash(), hC = tC.root_hash();
+        bool match = (hA == hB) && (hB == hC);
+        std::cout << "    n=" << std::setw(5) << n
+                  << "  forward=reverse=shuffled: "
+                  << (match ? "PASS (all identical)" : "FAIL (mismatch!)")
+                  << "  root=" << to_hex(hA).substr(0, 16) << "...\n";
+    }
+}
+
+static void bench_proof_negative() {
+    print_header("BENCHMARK: Proof Security — Negative Tests");
+
+    MerklePatriciaTrie trie;
+    for (int i = 0; i < 1000; i++) trie.put(make_key(i), make_value(i));
+
+    Hash root = trie.root_hash();
+    std::string test_key = make_key(42);
+    std::string correct_val = make_value(42);
+    std::vector<ProofItem> proof = trie.generate_proof(test_key);
+
+    // 1. Correct proof
+    bool v1 = MerklePatriciaTrie::verify_proof(root, test_key, correct_val, proof);
+    std::cout << "    Correct proof:          " << (v1 ? "PASS" : "FAIL") << "\n";
+
+    // 2. Wrong value
+    bool v2 = MerklePatriciaTrie::verify_proof(root, test_key, "WRONG_VALUE", proof);
+    std::cout << "    Wrong value:            " << (!v2 ? "PASS (rejected)" : "FAIL (accepted!)") << "\n";
+
+    // 3. Tampered root
+    Hash fake_root = root;
+    fake_root[0] ^= 0xFF;
+    bool v3 = MerklePatriciaTrie::verify_proof(fake_root, test_key, correct_val, proof);
+    std::cout << "    Tampered root:          " << (!v3 ? "PASS (rejected)" : "FAIL (accepted!)") << "\n";
+
+    // 4. Empty proof
+    bool v4 = MerklePatriciaTrie::verify_proof(root, test_key, correct_val, {});
+    std::cout << "    Empty proof:            " << (!v4 ? "PASS (rejected)" : "FAIL (accepted!)") << "\n";
+
+    // 5. Proof for wrong key
+    std::string other_key = make_key(99);
+    bool v5 = MerklePatriciaTrie::verify_proof(root, other_key, correct_val, proof);
+    std::cout << "    Wrong key's proof:      " << (!v5 ? "PASS (rejected)" : "FAIL (accepted!)") << "\n";
+
+    // 6. Stale proof after mutation
+    trie.put(make_key(42), "UPDATED");
+    Hash new_root = trie.root_hash();
+    bool v6 = MerklePatriciaTrie::verify_proof(new_root, test_key, correct_val, proof);
+    std::cout << "    Stale proof (post-mut): " << (!v6 ? "PASS (rejected)" : "FAIL (accepted!)") << "\n";
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Main
 // ─────────────────────────────────────────────────────────────────────────────
 int main() {
     std::cout << std::fixed;
-    //test all function in this benchmark
-    print_header("Merkle Patricia Trie Benchmark");
-    const int N = 100000;
-    std::vector<std::string> keys(N), values(N);
-    for (int i = 0; i < N; i++) {
-        keys[i] = make_key(i);
-        values[i] = make_value(i);
-    }  
-    MerklePatriciaTrie trie;    
+ 
+    // ── Keccak raw speed ──
+    bench_keccak();
+ 
+    // ── Scaling benchmarks ──
+    int scales[] = {100, 500, 1000, 2000, 5000, 10000};
+    int num_scales = 6;
+ 
+    print_header("BENCHMARK: Insert / Lookup / Delete Throughput");
     print_table_header();
-    print_row("Insert", N, [&]() {
-        Timer t;
-        t.start();
-        for (int i = 0; i < N; i++) {
-            trie.put(keys[i], values[i]);
-        }
-        return t.elapsed_ms();
-    }(), 0); // per-op will be calculated later
+    std::vector<ScaleResult> results;
+    for (int si = 0; si < num_scales; si++) {
+        ScaleResult r = bench_at_scale(scales[si]);
+        results.push_back(r);
+        char label[32];
+        snprintf(label, sizeof(label), "Insert (n=%d)", r.n);
+        print_row(label, r.n, r.insert_us * r.n / 1000.0, r.insert_us);
+        snprintf(label, sizeof(label), "Lookup (n=%d)", r.n);
+        print_row(label, r.n, r.lookup_us * r.n / 1000.0, r.lookup_us);
+        snprintf(label, sizeof(label), "Delete (n=%d)", r.n);
+        print_row(label, r.n, r.delete_us * r.n / 1000.0, r.delete_us);
+        std::cout << "\n";
+    }
+ 
+    // ── Root hash cost ──
+    print_header("BENCHMARK: Root Hash Computation (Full Trie)");
+    std::cout << "    " << std::left << std::setw(16) << "Trie Size"
+              << std::right << std::setw(14) << "Root Hash"
+              << "\n";
+    std::cout << "    " << std::string(30, '-') << "\n";
+    for (size_t i = 0; i < results.size(); i++) {
+        std::cout << "    " << std::left << std::setw(16) << results[i].n
+                  << std::right << std::setw(10) << std::setprecision(2) << results[i].root_hash_us << " us\n";
+    }
+ 
+    // ── Proof stats ──
+    print_header("BENCHMARK: Proof Generation & Verification");
+    std::cout << "    " << std::left << std::setw(10) << "Size"
+              << std::right << std::setw(12) << "Gen (us)"
+              << std::setw(12) << "Verify (us)"
+              << std::setw(10) << "Depth"
+              << std::setw(14) << "Proof Bytes"
+              << "\n";
+    std::cout << "    " << std::string(58, '-') << "\n";
+    for (size_t i = 0; i < results.size(); i++) {
+        std::cout << "    " << std::left << std::setw(10) << results[i].n
+                  << std::right << std::setw(12) << std::setprecision(2) << results[i].proof_gen_us
+                  << std::setw(12) << std::setprecision(2) << results[i].proof_verify_us
+                  << std::setw(10) << std::setprecision(1) << results[i].avg_proof_depth
+                  << std::setw(14) << std::setprecision(1) << results[i].avg_proof_bytes
+                  << "\n";
+    }
+ 
+    // ── Scaling summary ──
+    print_header("BENCHMARK: Scaling Summary (us per operation)");
+    std::cout << "    " << std::left << std::setw(8) << "n"
+              << std::right << std::setw(10) << "Insert"
+              << std::setw(10) << "Lookup"
+              << std::setw(10) << "Delete"
+              << std::setw(12) << "RootHash"
+              << std::setw(10) << "ProofGen"
+              << std::setw(8) << "Depth"
+              << "\n";
+    std::cout << "    " << std::string(68, '-') << "\n";
+    for (size_t i = 0; i < results.size(); i++) {
+        const ScaleResult& r = results[i];
+        std::cout << "    " << std::left << std::setw(8) << r.n
+                  << std::right
+                  << std::setw(10) << std::setprecision(2) << r.insert_us
+                  << std::setw(10) << std::setprecision(2) << r.lookup_us
+                  << std::setw(10) << std::setprecision(2) << r.delete_us
+                  << std::setw(12) << std::setprecision(2) << r.root_hash_us
+                  << std::setw(10) << std::setprecision(2) << r.proof_gen_us
+                  << std::setw(8) << std::setprecision(1) << r.avg_proof_depth
+                  << "\n";
+    }
+ 
+    // ── Determinism ──
+    bench_determinism();
+ 
+    // ── Security ──
+    bench_proof_negative();
+ 
+    // ── Summary ──
+    print_header("BENCHMARK COMPLETE");
+    std::cout << "  Measured across " << num_scales << " scales from "
+              << scales[0] << " to " << scales[num_scales-1] << " entries.\n\n"
+              << "  What to look for:\n"
+              << "    - Insert/Lookup/Delete should scale ~O(key_length), not O(n)\n"
+              << "    - Proof depth should grow logarithmically (~4-8 for 10K entries)\n"
+              << "    - Proof bytes should stay small (<1KB) regardless of trie size\n"
+              << "    - Root hash is O(n) on first compute, cached on subsequent\n"
+              << "    - All negative proof tests must PASS (reject invalid proofs)\n"
+              << "    - Determinism must hold across insertion orders\n\n";
+ 
     return 0;
 }
