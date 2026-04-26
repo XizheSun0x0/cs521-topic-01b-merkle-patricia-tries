@@ -186,6 +186,39 @@ static void bench_keccak() {
     }
 }
 
+static void bench_determinism() {
+    print_header("BENCHMARK: Insertion Order Determinism");
+
+    int sizes[] = {100, 1000, 5000};
+    for (int si = 0; si < 3; si++) {
+        int n = sizes[si];
+        std::vector<std::string> keys(n), vals(n);
+        for (int i = 0; i < n; i++) { keys[i] = make_key(i); vals[i] = make_value(i); }
+
+        // Forward order
+        MerklePatriciaTrie tA;
+        for (int i = 0; i < n; i++) tA.put(keys[i], vals[i]);
+
+        // Reverse order
+        MerklePatriciaTrie tB;
+        for (int i = n - 1; i >= 0; i--) tB.put(keys[i], vals[i]);
+
+        // Random order (Fisher-Yates)
+        std::vector<int> perm(n);
+        for (int i = 0; i < n; i++) perm[i] = i;
+        for (int i = n - 1; i > 0; i--) std::swap(perm[i], perm[(i * 2654435761u) % (i + 1)]);
+        MerklePatriciaTrie tC;
+        for (int i = 0; i < n; i++) tC.put(keys[perm[i]], vals[perm[i]]);
+
+        Hash hA = tA.root_hash(), hB = tB.root_hash(), hC = tC.root_hash();
+        bool match = (hA == hB) && (hB == hC);
+        std::cout << "    n=" << std::setw(5) << n
+                  << "  forward=reverse=shuffled: "
+                  << (match ? "PASS (all identical)" : "FAIL (mismatch!)")
+                  << "  root=" << to_hex(hA).substr(0, 16) << "...\n";
+    }
+}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Main
