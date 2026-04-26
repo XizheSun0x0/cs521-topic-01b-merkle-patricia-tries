@@ -9,6 +9,7 @@ project/
 ├── merkle_patricia_trie.h    # Header-only MPT library (shared by both targets)
 ├── merkle_patricia_trie.cpp  # Original standalone reference (not compiled)
 ├── localtest.cpp             # Terminal test runner — 5 demo scenarios
+├── benchmark.cpp             # benchmark this implementation
 ├── server.cpp                # HTTP API server for the Vue frontend
 ├── CMakeLists.txt            # CMake build
 ├── Makefile                  # Make build (alternative)
