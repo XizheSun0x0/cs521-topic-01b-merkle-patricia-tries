@@ -9,3 +9,6 @@ add_executable(localtest localtest.cpp)
 
 # ── server: HTTP API server for the Vue frontend ──
 add_executable(server server.cpp)
+
+# ── benchmark: performance benchmark for the MPT implementation ──
+add_executable(benchmark benchmark.cpp)
