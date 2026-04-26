@@ -219,6 +219,46 @@ static void bench_determinism() {
     }
 }
 
+static void bench_proof_negative() {
+    print_header("BENCHMARK: Proof Security — Negative Tests");
+
+    MerklePatriciaTrie trie;
+    for (int i = 0; i < 1000; i++) trie.put(make_key(i), make_value(i));
+
+    Hash root = trie.root_hash();
+    std::string test_key = make_key(42);
+    std::string correct_val = make_value(42);
+    std::vector<ProofItem> proof = trie.generate_proof(test_key);
+
+    // 1. Correct proof
+    bool v1 = MerklePatriciaTrie::verify_proof(root, test_key, correct_val, proof);
+    std::cout << "    Correct proof:          " << (v1 ? "PASS" : "FAIL") << "\n";
+
+    // 2. Wrong value
+    bool v2 = MerklePatriciaTrie::verify_proof(root, test_key, "WRONG_VALUE", proof);
+    std::cout << "    Wrong value:            " << (!v2 ? "PASS (rejected)" : "FAIL (accepted!)") << "\n";
+
+    // 3. Tampered root
+    Hash fake_root = root;
+    fake_root[0] ^= 0xFF;
+    bool v3 = MerklePatriciaTrie::verify_proof(fake_root, test_key, correct_val, proof);
+    std::cout << "    Tampered root:          " << (!v3 ? "PASS (rejected)" : "FAIL (accepted!)") << "\n";
+
+    // 4. Empty proof
+    bool v4 = MerklePatriciaTrie::verify_proof(root, test_key, correct_val, {});
+    std::cout << "    Empty proof:            " << (!v4 ? "PASS (rejected)" : "FAIL (accepted!)") << "\n";
+
+    // 5. Proof for wrong key
+    std::string other_key = make_key(99);
+    bool v5 = MerklePatriciaTrie::verify_proof(root, other_key, correct_val, proof);
+    std::cout << "    Wrong key's proof:      " << (!v5 ? "PASS (rejected)" : "FAIL (accepted!)") << "\n";
+
+    // 6. Stale proof after mutation
+    trie.put(make_key(42), "UPDATED");
+    Hash new_root = trie.root_hash();
+    bool v6 = MerklePatriciaTrie::verify_proof(new_root, test_key, correct_val, proof);
+    std::cout << "    Stale proof (post-mut): " << (!v6 ? "PASS (rejected)" : "FAIL (accepted!)") << "\n";
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Main
