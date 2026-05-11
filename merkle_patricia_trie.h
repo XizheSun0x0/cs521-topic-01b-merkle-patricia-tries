@@ -6,6 +6,7 @@
  * Extracted from merkle_patricia_trie.cpp
  */
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -17,6 +18,10 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+typedef std::vector<uint8_t> Bytes;
+typedef std::vector<uint8_t> Hash;
+typedef std::vector<uint8_t> Nibbles;
 
 template <typename T>
 class Optional
@@ -108,7 +113,6 @@ namespace keccak
 
 namespace rlp
 {
-    typedef std::vector<uint8_t> Bytes;
     static inline Bytes encode_length(size_t len, uint8_t offset)
     {
         if (len < 56)
@@ -141,17 +145,63 @@ namespace rlp
         return out;
     }
 
-    static bool rlp_list_contains_rlp_item(const Bytes & list, const Bytes & item) {
+    static void decode_string (const Bytes& s, Bytes& result) {
+        result.clear();
+
+        // Check whether s is a string
+        if (!((s.at(0) >= 0x80 && s.at(0) <= 0xBF) || (s.at(0) < 0x80 && s.size() == 1))) {
+            std::cerr << "decode_string error: first argument not a string" << std::endl;
+
+            return;
+        }
+
+        if (s.at(0) < 0x80) {
+            // Single byte
+            result.push_back(s.at(0));
+        } else if (s.at(0) <= 0xB7) {
+            // Short string
+            int str_len = s.at(0) - 0x80;
+
+            if (s.size() - 1 != str_len) {
+                std::cerr << "Bad encoded string length" << std::endl;
+
+                return;
+            }
+
+            result.assign(s.begin() + 1, s.end());
+        } else {
+            size_t str_len = 0;
+
+            int len_byte_num = s.at(0) - 0xB7;
+
+            size_t length_byte_idx = 1;
+            int counter = 1;
+            while (counter <= len_byte_num) {
+                str_len = (str_len << 8) | (s.at(length_byte_idx));
+
+                length_byte_idx++;
+                counter++;
+            }
+
+            if (s.size() - 1 - len_byte_num != str_len) {
+                std::cerr << "Bad encoded string length" << std::endl;
+
+                return;
+            }
+
+            result.assign(s.begin() + len_byte_num + 1, s.end());
+        }
+    }
+
+    static void decode_rlp_list(const Bytes & list, std::vector<Bytes>& out) {
+        out.clear();
+
         // First byte should >= 0xC0 so we know that it is a list
         if (!(list.at(0) >= 0xC0 && list.at(0) <= 0xFF)) {
             std::cerr << __func__ << ": first argument is not a list" << std::endl;
             std::cerr << "Get first byte: " << std::hex << (int)list.at(0) << std::endl;
 
-            exit(1);
-        }
-
-        if (item.empty()) {
-            return false;
+            return;
         }
 
         // Signaling whether it is a long list or a short list
@@ -208,19 +258,20 @@ namespace rlp
         // Extract item from list, one by one, and compare it
         // with the provided item
         for (byte_idx = content_start_byte_idx; byte_idx < list.size();) {
-            // Extract item first
-            Bytes cur_item;
+            // Extract item
 
             if (list.at(byte_idx) < 0x80) {
                 // 0x00 - 0x7F: Single byte
-                cur_item.assign(list.begin() + byte_idx, list.begin() + byte_idx + 1);
+                out.push_back(Bytes(list.begin() + byte_idx, list.begin() + byte_idx + 1));
+                // cur_item.assign(list.begin() + byte_idx, list.begin() + byte_idx + 1);
 
                 byte_idx++;
             } else if (list.at(byte_idx) <= 0xB7) {
                 // 0x80 - 0xB7: Short string
                 int str_len = list.at(byte_idx) - 0x80;
 
-                cur_item.assign(list.begin() + byte_idx, list.begin() + byte_idx + str_len + 1);
+                out.push_back(Bytes(list.begin() + byte_idx, list.begin() + byte_idx + str_len + 1));
+                // cur_item.assign(list.begin() + byte_idx, list.begin() + byte_idx + str_len + 1);
 
                 byte_idx += (str_len + 1);
             } else if (list.at(byte_idx) < 0xC0) {
@@ -238,14 +289,16 @@ namespace rlp
                     counter++;
                 }
 
-                cur_item.assign(list.begin() + byte_idx, list.begin() + byte_idx + len_byte_num + 1 + str_len);
+                out.push_back(Bytes(list.begin() + byte_idx, list.begin() + byte_idx + len_byte_num + 1 + str_len));
+                // cur_item.assign(list.begin() + byte_idx, list.begin() + byte_idx + len_byte_num + 1 + str_len);
 
                 byte_idx += (1 + len_byte_num + str_len);
             } else if (list.at(byte_idx) <= 0xF7) {
                 // 0xC0 - 0xF7: Short List
                 size_t list_member_len = list.at(byte_idx) - 0xC0;
 
-                cur_item.assign(list.begin() + byte_idx, list.begin() + byte_idx + list_member_len + 1);
+                out.push_back(Bytes(list.begin() + byte_idx, list.begin() + byte_idx + list_member_len + 1));
+                // cur_item.assign(list.begin() + byte_idx, list.begin() + byte_idx + list_member_len + 1);
 
                 byte_idx += (list_member_len + 1);
             } else if (list.at(byte_idx) <= 0xFF) {
@@ -263,27 +316,14 @@ namespace rlp
                     counter++;
                 }
 
-                cur_item.assign(list.begin() + byte_idx, list.begin() + byte_idx + len_byte_num + 1 + list_member_len);
+                out.push_back(Bytes(list.begin() + byte_idx, list.begin() + byte_idx + len_byte_num + 1 + list_member_len));
+                // cur_item.assign(list.begin() + byte_idx, list.begin() + byte_idx + len_byte_num + 1 + list_member_len);
 
                 byte_idx += (1 + len_byte_num + list_member_len);
-            } else {
-                std::cerr << "Invalid encoding start found in list item: " << std::hex << (int)(list.at(byte_idx)) << std::endl;
-
-                exit(1);
-            }
-
-            if (cur_item == item) {
-                return true;
             }
         }
-
-        return false;
     }
 }
-
-typedef std::vector<uint8_t> Bytes;
-typedef std::vector<uint8_t> Hash;
-typedef std::vector<uint8_t> Nibbles;
 
 static inline std::string to_hex(const Bytes &data)
 {
@@ -440,23 +480,55 @@ public:
         {
             const Bytes &pe = proof[pi].rlp_encoded;
             const Bytes &ce = proof[pi + 1].rlp_encoded;
+
+            std::vector<Bytes> children_list;
+            rlp::decode_rlp_list(pe, children_list);
+
             bool linked = false;
             if (ce.size() >= 32)
             {
                 Hash ch = rlp::encode_string(keccak::sha3_256(ce));
-                linked = rlp::rlp_list_contains_rlp_item(pe, ch);
+                linked = (!(ch.empty())) && (std::find(children_list.begin(), children_list.end(), ch) != children_list.end());
             }
             if (!linked)
-                linked = rlp::rlp_list_contains_rlp_item(pe, ce);
+                linked = (!(ce.empty())) && (std::find(children_list.begin(), children_list.end(), ce) != children_list.end());
             if (!linked)
             {
                 Hash ch = rlp::encode_string(keccak::sha3_256(ce));
-                linked = rlp::rlp_list_contains_rlp_item(pe, ch);
+                linked = (!(ch.empty())) && (std::find(children_list.begin(), children_list.end(), ch) != children_list.end());
             }
             if (!linked)
                 return false;
         }
-        return contains_bytes(proof.back().rlp_encoded, v);
+
+        std::vector<Bytes> decoded_last_proof_item;
+        rlp::decode_rlp_list(proof.back().rlp_encoded, decoded_last_proof_item);
+
+        // Last item should be a leaf node, so at least
+        // it has to have two bytes
+        if (decoded_last_proof_item.size() != 2) {
+            return false;
+        }
+
+        Bytes decoded_path_component;
+
+        rlp::decode_string(decoded_last_proof_item.at(0), decoded_path_component);
+
+        if (decoded_path_component.empty()) {
+            return false;
+        }
+
+        uint8_t highest_nibble = (decoded_path_component.at(0)) >> 4;
+
+        // Check whether it is a leaf
+        if (highest_nibble != 2 && highest_nibble != 3) {
+            return false;
+        }
+
+        return decoded_last_proof_item.at(1) == rlp::encode_string(v);
+
+
+        // return contains_bytes(proof.back().rlp_encoded, v);
     }
     /** Resets the trie to its initial state. */
     void reset() {

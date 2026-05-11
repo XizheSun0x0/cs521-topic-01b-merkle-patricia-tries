@@ -258,6 +258,15 @@ static void bench_proof_negative() {
     Hash new_root = trie.root_hash();
     bool v6 = MerklePatriciaTrie::verify_proof(new_root, test_key, correct_val, proof);
     std::cout << "    Stale proof (post-mut): " << (!v6 ? "PASS (rejected)" : "FAIL (accepted!)") << "\n";
+
+    // 7. Key overlap
+    MerklePatriciaTrie tr;
+    tr.put("dog", "animate");
+    tr.put("doge", "animator");
+    Hash tr_root = tr.root_hash();
+    std::vector<ProofItem> tr_proof = tr.generate_proof("dog");
+    bool v7 = MerklePatriciaTrie::verify_proof(tr_root, "doge", "animate", tr_proof);
+    std::cout << "    Key Prefix Overlap:     " << (!v7 ? "PASS (rejected)" : "FAIL (accepted!)") << "\n";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
