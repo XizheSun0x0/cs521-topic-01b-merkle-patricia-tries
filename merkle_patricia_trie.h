@@ -6,7 +6,9 @@
  * Extracted from merkle_patricia_trie.cpp
  */
 
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
@@ -137,6 +139,145 @@ namespace rlp
         Bytes out = encode_length(payload.size(), 0xC0);
         out.insert(out.end(), payload.begin(), payload.end());
         return out;
+    }
+
+    static bool rlp_list_contains_rlp_item(const Bytes & list, const Bytes & item) {
+        // First byte should >= 0xC0 so we know that it is a list
+        if (!(list.at(0) >= 0xC0 && list.at(0) <= 0xFF)) {
+            std::cerr << __func__ << ": first argument is not a list" << std::endl;
+            std::cerr << "Get first byte: " << std::hex << (int)list.at(0) << std::endl;
+
+            exit(1);
+        }
+
+        if (item.empty()) {
+            return false;
+        }
+
+        // Signaling whether it is a long list or a short list
+        uint8_t prefix_byte = list.at(0);
+
+        bool is_short_list = (prefix_byte <= 0xF7);
+
+        size_t list_content_length = 0; 
+        // This does NOT include the prefix byte or the length bytes
+        // Note: size_t must be 8 bytes
+        
+        int length_bytes_n;
+        // This is only used for long lists
+
+        // The byte index from which the real content starts
+        size_t content_start_byte_idx;
+
+        // Index used in all for loops
+        int byte_idx;
+
+        // Calculate list length
+        if (is_short_list) {
+            // Short list
+            list_content_length = prefix_byte - 0xC0;
+            content_start_byte_idx = 1;
+        } else {
+            // Long list
+            length_bytes_n = prefix_byte - 0xF7;
+
+            for (byte_idx = 1; byte_idx <= length_bytes_n; byte_idx++) {
+                list_content_length = (list_content_length << 8) | (list.at(byte_idx));
+            }
+
+            content_start_byte_idx = byte_idx;
+        }
+
+        // Check the encoded length is correct
+        if (is_short_list) {
+            // Short list
+            if (list.size() - 1 != list_content_length) {
+                std::cerr << "Wrong short list length in encoding" << std::endl;
+                
+                exit(1);
+            }
+        } else {
+            // Long list
+            if (list.size() - 1 - length_bytes_n != list_content_length) {
+                std::cerr << "Wrong long list length in encoding" << std::endl;
+
+                exit(1);
+            }
+        }
+
+        // Extract item from list, one by one, and compare it
+        // with the provided item
+        for (byte_idx = content_start_byte_idx; byte_idx < list.size();) {
+            // Extract item first
+            Bytes cur_item;
+
+            if (list.at(byte_idx) < 0x80) {
+                // 0x00 - 0x7F: Single byte
+                cur_item.assign(list.begin() + byte_idx, list.begin() + byte_idx + 1);
+
+                byte_idx++;
+            } else if (list.at(byte_idx) <= 0xB7) {
+                // 0x80 - 0xB7: Short string
+                int str_len = list.at(byte_idx) - 0x80;
+
+                cur_item.assign(list.begin() + byte_idx, list.begin() + byte_idx + str_len + 1);
+
+                byte_idx += (str_len + 1);
+            } else if (list.at(byte_idx) < 0xC0) {
+                // 0xB8 - 0xBF: Long string
+                size_t str_len = 0;
+
+                int len_byte_num = list.at(byte_idx) - 0xB7;
+
+                size_t length_byte_idx = byte_idx + 1;
+                int counter = 1;
+                while (counter <= len_byte_num) {
+                    str_len = (str_len << 8) | (list.at(length_byte_idx));
+
+                    length_byte_idx++;
+                    counter++;
+                }
+
+                cur_item.assign(list.begin() + byte_idx, list.begin() + byte_idx + len_byte_num + 1 + str_len);
+
+                byte_idx += (1 + len_byte_num + str_len);
+            } else if (list.at(byte_idx) <= 0xF7) {
+                // 0xC0 - 0xF7: Short List
+                size_t list_member_len = list.at(byte_idx) - 0xC0;
+
+                cur_item.assign(list.begin() + byte_idx, list.begin() + byte_idx + list_member_len + 1);
+
+                byte_idx += (list_member_len + 1);
+            } else if (list.at(byte_idx) <= 0xFF) {
+                // 0xF8 - 0xFF: Long List
+                size_t list_member_len = 0;
+
+                int len_byte_num = list.at(byte_idx) - 0xF7;
+
+                size_t length_byte_idx = byte_idx + 1;
+                int counter = 1;
+                while (counter <= len_byte_num) {
+                    list_member_len = (list_member_len << 8) | (list.at(length_byte_idx));
+
+                    length_byte_idx++;
+                    counter++;
+                }
+
+                cur_item.assign(list.begin() + byte_idx, list.begin() + byte_idx + len_byte_num + 1 + list_member_len);
+
+                byte_idx += (1 + len_byte_num + list_member_len);
+            } else {
+                std::cerr << "Invalid encoding start found in list item: " << std::hex << (int)(list.at(byte_idx)) << std::endl;
+
+                exit(1);
+            }
+
+            if (cur_item == item) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
 
@@ -302,15 +443,15 @@ public:
             bool linked = false;
             if (ce.size() >= 32)
             {
-                Hash ch = keccak::sha3_256(ce);
-                linked = contains_bytes(pe, ch);
+                Hash ch = rlp::encode_string(keccak::sha3_256(ce));
+                linked = rlp::rlp_list_contains_rlp_item(pe, ch);
             }
             if (!linked)
-                linked = contains_bytes(pe, ce);
+                linked = rlp::rlp_list_contains_rlp_item(pe, ce);
             if (!linked)
             {
-                Hash ch = keccak::sha3_256(ce);
-                linked = contains_bytes(pe, ch);
+                Hash ch = rlp::encode_string(keccak::sha3_256(ce));
+                linked = rlp::rlp_list_contains_rlp_item(pe, ch);
             }
             if (!linked)
                 return false;
