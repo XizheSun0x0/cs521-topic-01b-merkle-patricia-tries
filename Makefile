@@ -1,5 +1,6 @@
 CXX      ?= clang++
-CXXFLAGS  = -std=c++14 -O2 -Wall
+CXXFLAGS  = -std=c++14 -O2 -Wall -Wno-unused-function
+
 
 .PHONY: all clean server localtest benchmark
 
