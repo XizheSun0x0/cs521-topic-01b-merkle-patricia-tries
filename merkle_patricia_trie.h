@@ -467,69 +467,318 @@ public:
         build_proof(root_, to_nibbles(Bytes(key.begin(), key.end())), 0, p);
         return p;
     }
-    /** Verifies a proof for a key-value pair against a given root hash. */
-    static bool verify_proof(const Hash &er, const std::string &key, const std::string &value, const std::vector<ProofItem> &proof)
-    {
-        Bytes v(value.begin(), value.end());
-        if (proof.empty())
-            return false;
-        Hash c = keccak::sha3_256(proof[0].rlp_encoded);
-        if (c != er)
-            return false;
-        for (size_t pi = 0; pi + 1 < proof.size(); pi++)
-        {
-            const Bytes &pe = proof[pi].rlp_encoded;
-            const Bytes &ce = proof[pi + 1].rlp_encoded;
+    // ── RLP Decoder ──────────────────────────────────────────────────────
+    // Decode RLP data starting at data[pos]. Returns the payload bytes and
+    // advances pos past the item. Returns false on malformed input.
+    static bool rlp_decode_item(const Bytes& data, size_t& pos, Bytes& out) {
+        if (pos >= data.size()) return false;
+        uint8_t prefix = data[pos];
 
-            std::vector<Bytes> children_list;
-            rlp::decode_rlp_list(pe, children_list);
-
-            bool linked = false;
-            if (ce.size() >= 32)
-            {
-                Hash ch = rlp::encode_string(keccak::sha3_256(ce));
-                linked = (!(ch.empty())) && (std::find(children_list.begin(), children_list.end(), ch) != children_list.end());
-            }
-            if (!linked)
-                linked = (!(ce.empty())) && (std::find(children_list.begin(), children_list.end(), ce) != children_list.end());
-            if (!linked)
-            {
-                Hash ch = rlp::encode_string(keccak::sha3_256(ce));
-                linked = (!(ch.empty())) && (std::find(children_list.begin(), children_list.end(), ch) != children_list.end());
-            }
-            if (!linked)
-                return false;
+        if (prefix < 0x80) {
+            // Single byte
+            out.assign(1, prefix);
+            pos += 1;
+            return true;
         }
-
-        std::vector<Bytes> decoded_last_proof_item;
-        rlp::decode_rlp_list(proof.back().rlp_encoded, decoded_last_proof_item);
-
-        // Last item should be a leaf node, so at least
-        // it has to have two bytes
-        if (decoded_last_proof_item.size() != 2) {
-            return false;
+        if (prefix <= 0xb7) {
+            // Short string: 0-55 bytes
+            size_t len = prefix - 0x80;
+            pos += 1;
+            if (pos + len > data.size()) return false;
+            out.assign(data.begin() + pos, data.begin() + pos + len);
+            pos += len;
+            return true;
         }
-
-        Bytes decoded_path_component;
-
-        rlp::decode_string(decoded_last_proof_item.at(0), decoded_path_component);
-
-        if (decoded_path_component.empty()) {
-            return false;
+        if (prefix <= 0xbf) {
+            // Long string: length-of-length follows
+            size_t ll = prefix - 0xb7;
+            pos += 1;
+            if (pos + ll > data.size()) return false;
+            size_t len = 0;
+            for (size_t i = 0; i < ll; i++) len = (len << 8) | data[pos + i];
+            pos += ll;
+            if (pos + len > data.size()) return false;
+            out.assign(data.begin() + pos, data.begin() + pos + len);
+            pos += len;
+            return true;
         }
-
-        uint8_t highest_nibble = (decoded_path_component.at(0)) >> 4;
-
-        // Check whether it is a leaf
-        if (highest_nibble != 2 && highest_nibble != 3) {
-            return false;
+        if (prefix <= 0xf7) {
+            // Short list: payload length in prefix
+            size_t len = prefix - 0xc0;
+            pos += 1;
+            if (pos + len > data.size()) return false;
+            out.assign(data.begin() + pos, data.begin() + pos + len);
+            pos += len;
+            return true;
         }
-
-        return decoded_last_proof_item.at(1) == rlp::encode_string(v);
-
-
-        // return contains_bytes(proof.back().rlp_encoded, v);
+        // Long list: length-of-length follows
+        size_t ll = prefix - 0xf7;
+        pos += 1;
+        if (pos + ll > data.size()) return false;
+        size_t len = 0;
+        for (size_t i = 0; i < ll; i++) len = (len << 8) | data[pos + i];
+        pos += ll;
+        if (pos + len > data.size()) return false;
+        out.assign(data.begin() + pos, data.begin() + pos + len);
+        pos += len;
+        return true;
     }
+
+    // Decode an RLP list into its constituent items (each still RLP-wrapped)
+    static bool rlp_decode_list(const Bytes& data, std::vector<Bytes>& items) {
+        if (data.empty()) return false;
+        uint8_t prefix = data[0];
+
+        // Must be a list prefix
+        if (prefix < 0xc0) return false;
+
+        // Extract the list payload
+        size_t payload_start, payload_len;
+        if (prefix <= 0xf7) {
+            payload_len = prefix - 0xc0;
+            payload_start = 1;
+        } else {
+            size_t ll = prefix - 0xf7;
+            if (1 + ll > data.size()) return false;
+            payload_len = 0;
+            for (size_t i = 0; i < ll; i++) payload_len = (payload_len << 8) | data[1 + i];
+            payload_start = 1 + ll;
+        }
+
+        if (payload_start + payload_len > data.size()) return false;
+
+        // Decode each item within the payload
+        // We need the raw RLP bytes of each item (not just the payload)
+        // so we can check child references
+        size_t pos = payload_start;
+        size_t end = payload_start + payload_len;
+        while (pos < end) {
+            size_t item_start = pos;
+            // Skip over this item to find its extent
+            uint8_t p = data[pos];
+            size_t item_len;
+            if (p < 0x80) {
+                item_len = 1;
+            } else if (p <= 0xb7) {
+                item_len = 1 + (p - 0x80);
+            } else if (p <= 0xbf) {
+                size_t llen = p - 0xb7;
+                if (pos + 1 + llen > end) return false;
+                size_t slen = 0;
+                for (size_t i = 0; i < llen; i++) slen = (slen << 8) | data[pos + 1 + i];
+                item_len = 1 + llen + slen;
+            } else if (p <= 0xf7) {
+                item_len = 1 + (p - 0xc0);
+            } else {
+                size_t llen = p - 0xf7;
+                if (pos + 1 + llen > end) return false;
+                size_t slen = 0;
+                for (size_t i = 0; i < llen; i++) slen = (slen << 8) | data[pos + 1 + i];
+                item_len = 1 + llen + slen;
+            }
+            if (pos + item_len > end) return false;
+            items.push_back(Bytes(data.begin() + item_start, data.begin() + item_start + item_len));
+            pos += item_len;
+        }
+        return true;
+    }
+
+    // Decode an RLP string item to its raw bytes
+    static bool rlp_decode_string(const Bytes& item, Bytes& out) {
+        if (item.empty()) { out.clear(); return true; }
+        size_t pos = 0;
+        return rlp_decode_item(item, pos, out);
+    }
+
+    // ── Hex-Prefix Decoder ──────────────────────────────────────────────
+    // Decode hex-prefix (compact) encoded path back to nibbles + leaf flag
+    static void hex_prefix_decode(const Bytes& encoded, Nibbles& nibbles, bool& is_leaf) {
+        nibbles.clear();
+        if (encoded.empty()) { is_leaf = false; return; }
+        uint8_t first = encoded[0];
+        int flag = (first >> 4) & 0x0F;
+        is_leaf = (flag >= 2);
+        bool odd = (flag % 2) == 1;
+
+        if (odd) {
+            nibbles.push_back(first & 0x0F);
+        }
+        for (size_t i = 1; i < encoded.size(); i++) {
+            nibbles.push_back((encoded[i] >> 4) & 0x0F);
+            nibbles.push_back(encoded[i] & 0x0F);
+        }
+    }
+    // ── Child Link Verifier ─────────────────────────────────────────────
+    // Check that `reference` (raw RLP bytes of a child slot in the parent)
+    // correctly points to `child_encoded` (the next proof node's full RLP).
+    // Two cases per the inline-vs-hash rule:
+    //   - Inline: reference bytes == child_encoded bytes (child < 32 bytes)
+    //   - Hash:   reference is an RLP string containing hash(child_encoded)
+    static bool verify_child_link(const Bytes& reference, const Bytes& child_encoded) {
+        // Case 1: inline embedding — reference IS the child's encoding
+        if (reference == child_encoded) return true;
+
+        // Case 2: hash reference — reference is RLP-encoded 32-byte hash
+        Hash child_hash = keccak::sha3_256(child_encoded);
+        Bytes expected_ref = rlp::encode_string(child_hash);
+        if (reference == expected_ref) return true;
+
+        // Case 3: the reference might be a raw 32-byte hash without RLP wrapper
+        // (shouldn't happen per spec, but handle gracefully)
+        if (reference == child_hash) return true;
+
+        return false;
+    }
+    /** Verifies a proof for a key-value pair against a given root hash. */
+    static bool verify_proof(const Hash& expected_root, const std::string& key,
+                             const std::string& value, const std::vector<ProofItem>& proof) {
+        Bytes expected_value(value.begin(), value.end());
+        if (proof.empty()) return false;
+
+        // Step 1: root hash check
+        Hash computed_root = keccak::sha3_256(proof[0].rlp_encoded);
+        if (computed_root != expected_root) return false;
+
+        // Step 2: traverse the proof nodes according to the key nibbles
+        Nibbles key_nibbles = to_nibbles(Bytes(key.begin(), key.end()));
+        size_t nibble_idx = 0;
+        
+        // Each proof item should correspond to a node along the path from root to leaf
+        for (size_t pi = 0; pi < proof.size(); pi++) {
+            const Bytes& encoded = proof[pi].rlp_encoded;
+
+            // Decode this proof node
+            std::vector<Bytes> items;
+            if (!rlp_decode_list(encoded, items)) {
+                return false;
+            }
+
+            // Determine node type by item count
+            if (items.size() == 17) {
+                // ── Branch node: 16 children + value ──
+                if (nibble_idx == key_nibbles.size()) {
+                    // Key is consumed — value must be in slot 16
+                    Bytes branch_val;
+                    if (!rlp_decode_string(items[16], branch_val)) return false;
+                    return branch_val == expected_value;
+                }
+                // Follow the child at nibbles[nibble_idx]
+                uint8_t slot = key_nibbles[nibble_idx];
+                nibble_idx++;
+
+                // Verify link to next proof node
+                if (pi + 1 < proof.size()) {
+                    if (!verify_child_link(items[slot], proof[pi + 1].rlp_encoded))
+                        return false;
+                } else {
+                    // No more proof nodes but key not consumed — invalid
+                    return false;
+                }
+
+            } else if (items.size() == 2) {
+                // ── Leaf or Extension node ──
+                Bytes path_encoded;
+                if (!rlp_decode_string(items[0], path_encoded)) return false;
+                if (path_encoded.empty()) return false;
+
+                // Decode hex-prefix
+                bool is_leaf = false;
+                Nibbles path;
+                hex_prefix_decode(path_encoded, path, is_leaf);
+
+                // Verify nibble path matches key
+                for (size_t i = 0; i < path.size(); i++) {
+                    if (nibble_idx >= key_nibbles.size()) return false;
+                    if (key_nibbles[nibble_idx] != path[i]) return false;
+                    nibble_idx++;
+                }
+
+                if (is_leaf) {
+                    // Key must be fully consumed
+                    if (nibble_idx != key_nibbles.size()) return false;
+                    // Extract and compare value
+                    Bytes leaf_val;
+                    if (!rlp_decode_string(items[1], leaf_val)) return false;
+                    return leaf_val == expected_value;
+                } else {
+                    // Extension — verify link to next proof node
+                    if (pi + 1 < proof.size()) {
+                        if (!verify_child_link(items[1], proof[pi + 1].rlp_encoded))
+                            return false;
+                    } else {
+                        return false;
+                    }
+                }
+            } else {
+                return false; // Malformed node
+            }
+        }
+
+        return false; // Ran out of proof nodes without hitting a leaf
+    }
+    // /** Verifies a proof for a key-value pair against a given root hash. */
+    // static bool verify_proof(const Hash &er, const std::string &key, const std::string &value, const std::vector<ProofItem> &proof)
+    // {
+    //     Bytes v(value.begin(), value.end());
+    //     if (proof.empty())
+    //         return false;
+    //     Hash c = keccak::sha3_256(proof[0].rlp_encoded);
+    //     if (c != er)
+    //         return false;
+    //     for (size_t pi = 0; pi + 1 < proof.size(); pi++)
+    //     {
+    //         const Bytes &pe = proof[pi].rlp_encoded;
+    //         const Bytes &ce = proof[pi + 1].rlp_encoded;
+
+    //         std::vector<Bytes> children_list;
+    //         rlp::decode_rlp_list(pe, children_list);
+
+    //         bool linked = false;
+    //         if (ce.size() >= 32)
+    //         {
+    //             Hash ch = rlp::encode_string(keccak::sha3_256(ce));
+    //             linked = (!(ch.empty())) && (std::find(children_list.begin(), children_list.end(), ch) != children_list.end());
+    //         }
+    //         if (!linked)
+    //             linked = (!(ce.empty())) && (std::find(children_list.begin(), children_list.end(), ce) != children_list.end());
+    //         if (!linked)
+    //         {
+    //             Hash ch = rlp::encode_string(keccak::sha3_256(ce));
+    //             linked = (!(ch.empty())) && (std::find(children_list.begin(), children_list.end(), ch) != children_list.end());
+    //         }
+    //         if (!linked)
+    //             return false;
+    //     }
+
+    //     std::vector<Bytes> decoded_last_proof_item;
+    //     rlp::decode_rlp_list(proof.back().rlp_encoded, decoded_last_proof_item);
+
+    //     // Last item should be a leaf node, so at least
+    //     // it has to have two bytes
+    //     if (decoded_last_proof_item.size() != 2) {
+    //         return false;
+    //     }
+
+    //     Bytes decoded_path_component;
+
+    //     rlp::decode_string(decoded_last_proof_item.at(0), decoded_path_component);
+
+    //     if (decoded_path_component.empty()) {
+    //         return false;
+    //     }
+
+    //     uint8_t highest_nibble = (decoded_path_component.at(0)) >> 4;
+
+    //     // Check whether it is a leaf
+    //     if (highest_nibble != 2 && highest_nibble != 3) {
+    //         return false;
+    //     }
+
+    //     return decoded_last_proof_item.at(1) == rlp::encode_string(v);
+
+
+    //     // return contains_bytes(proof.back().rlp_encoded, v);
+    // }
     /** Resets the trie to its initial state. */
     void reset() {
         root_ = TrieNode::make_null();

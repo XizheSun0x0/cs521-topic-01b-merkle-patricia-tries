@@ -279,7 +279,7 @@ int main() {
     bench_keccak();
  
     // ── Scaling benchmarks ──
-    int scales[] = {100, 500, 1000, 2000, 5000, 10000};
+    int scales[] = {100, 500, 1000, 5000, 10000,100000};
     int num_scales = 6;
  
     print_header("BENCHMARK: Insert / Lookup / Delete Throughput");
@@ -363,7 +363,7 @@ int main() {
               << scales[0] << " to " << scales[num_scales-1] << " entries.\n\n"
               << "  What to look for:\n"
               << "    - Insert/Lookup/Delete should scale ~O(key_length), not O(n)\n"
-              << "    - Proof depth should grow logarithmically (~4-8 for 10K entries)\n"
+              << "    - Proof depth should grow logarithmically (~4-8 for 100K entries)\n"
               << "    - Proof bytes should stay small (<1KB) regardless of trie size\n"
               << "    - Root hash is O(n) on first compute, cached on subsequent\n"
               << "    - All negative proof tests must PASS (reject invalid proofs)\n"
